@@ -1,12 +1,24 @@
 "use strict";
 //https://pomax.github.io/bezierinfo/
 const fs = require('fs');
+const path = require('path');
 
 const pathRegEx = /(?: d=")([\w.\-,\s]+)/g;
 const commandRegEx = /(m|l|c|q)([\d+-.,]+)/ig;
-const pointRegEx = /([-]?\d+\.\d+)(?:,)?([-]?\d+\.\d+)/g;
+const pointRegEx = /([-]?\d+\.*\d+)(?:,| )?([-]?\d+\.*\d+)/g;
 
-fs.readFile('assets/StrideGuide.svg', 'utf8', (error, data)=> {
+const file = path.normalize(process.argv[2]);
+const destination = process.argv[3];
+
+fs.access(file, fs.R_OK, (error)=>{
+    if (error){
+        console.log(error);
+        process.exit(1);
+    }
+    fs.readFile(file, 'utf8', parseResult);
+});
+
+function parseResult(error, data){
 
     const path = pathRegEx.exec(data)[1];
     const paths = [];
@@ -73,8 +85,8 @@ fs.readFile('assets/StrideGuide.svg', 'utf8', (error, data)=> {
         }
     }
     normalizePaths(paths);
-    fs.writeFile('out.json', JSON.stringify({paths: paths}));
-});
+    fs.writeFile(destination, JSON.stringify({paths: paths}));
+}
 
 function normalizePaths(paths) {
     let minX = Number.POSITIVE_INFINITY;
