@@ -6,5 +6,7 @@
   "trim": true,
   "minDistance": 0.5,
   "roundToNearest": 0.25,
-  "sampleFrequency": 0.001
+  "sampleFrequency": 0.001,
+  "pretty": false,
+  "prettyIndent": 0
 }

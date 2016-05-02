@@ -13,6 +13,8 @@ let trim;
 let minDistance;
 let roundToNearest;
 let sampleFrequency;
+let pretty;
+let prettyIndent;
 
 function read(file) {
     return new Promise((resolve, reject) => {
@@ -46,6 +48,8 @@ function runJob(data) {
     roundToNearest = +config.roundToNearest || 0.25;
     sampleFrequency = +config.sampleFrequency || 0.001;
     outputDirectory = config.outputDirectory;
+    pretty = !!config.pretty;
+    prettyIndent = ~~config.prettyIndent;
 
     if (outputDirectory) {
         try {
@@ -60,7 +64,7 @@ function runJob(data) {
         const file = path.normalize(files[i]);
         const fileInfo = path.parse(files[i]);
         promises[i] = read(file).then(processPaths).then(interpolatedPaths => {
-            const jsonStr = JSON.stringify(interpolatedPaths, 2);
+            const jsonStr = JSON.stringify(interpolatedPaths, null, (pretty ? prettyIndent : 0));
             if (outputDirectory) {
                 fs.writeFile(path.normalize(`${outputDirectory}/${fileInfo.name}.pathData.json`), jsonStr);
             }

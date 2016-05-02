@@ -1,6 +1,6 @@
 {
   "author": "Justin Wilaby",
-  "name": "svg-path-parser",
+  "name": "svg-path-interpolator",
   "version": "0.1.0",
   "license": "MIT",
   "main": "src/index.js"

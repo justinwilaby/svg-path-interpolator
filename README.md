@@ -6,13 +6,15 @@ See the `sample.config.json` for configuration options
 ```js
 {
   "files": [
-    "sample.svg" 
+    "sample.svg"
   ],
   "outputDirectory": "out/",
-  "trim": false,
+  "trim": true,
   "minDistance": 0.5,
   "roundToNearest": 0.25,
-  "sampleFrequency": 0.001
+  "sampleFrequency": 0.001,
+  "pretty": false,
+  "prettyIndent": 0
 }
 ```
 
@@ -27,5 +29,12 @@ When `trim` is `true`, paths that were translated are normalized and will begin 
 ### roundToNearest
 `roundToNearest` is useful when snapping to fractional pixel values.  For example, if `roundToNearest` is `.25`, a sample resulting in the point 2.343200092,4.6100923 will round to 2.25,4.5
 ### sampleFrequency
- `sampleFrequency` determines the increment of `t` when sampling. If `sampleFrequency` is set to `.001` ,since `t` iterates from 0 to 1, there will be 1000 points sampled per command but only points that are greater than `minDistance`
- 
+ `sampleFrequency` determines the increment of `t` when sampling. If `sampleFrequency` is set to `.001` , since `t` iterates from 0 to 1, there will be 1000 points sampled per command but only points that are greater than `minDistance` are captured.
+### pretty
+When `true`, `pretty` creates formatted json output
+### prettyIndent
+Then number of spaces to indent when `pretty` is `true`
+
+## Examples
+### Animating output
+See [this pen](https://codepen.io/justinwilaby/pen/dMQdBo) for an example on animating a simple path.
