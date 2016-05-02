@@ -4,24 +4,91 @@ const fs = require('fs');
 const path = require('path');
 
 const pathRegEx = /(?: d=")([\w.\-,\s]+)/g;
-const commandRegEx = /(m|l|c|q)([\d+-.,]+)/ig;
+const commandRegEx = /(m|l|c|q|z)([\d+-.,]+)/ig;
 const pointRegEx = /([-]?\d+\.*\d+)(?:,| )?([-]?\d+\.*\d+)/g;
+const configPath = path.normalize(process.argv[2]);
 
-const file = path.normalize(process.argv[2]);
-const destination = process.argv[3];
+let outputDirectory;
+let trim;
+let minDistance;
+let roundToNearest;
+let sampleFrequency;
 
-fs.access(file, fs.R_OK, (error)=>{
-    if (error){
-        console.log(error);
+function read(file) {
+    return new Promise((resolve, reject) => {
+        fs.access(file, fs.R_OK, (error)=> {
+            if (error) {
+                console.log(error);
+                process.exit(1);
+            }
+            fs.readFile(file, 'utf8', (error, data)=> {
+                if (data) {
+                    resolve(data);
+                }
+                else {
+                    reject(error);
+                }
+            });
+        });
+    });
+}
+
+function runJob(data) {
+    const config = JSON.parse(data) || process.exit(1);
+    const files = config.files || [];
+    const len = files.length;
+    if (len === 0) {
+        console.log('No files specified.');
         process.exit(1);
     }
-    fs.readFile(file, 'utf8', parseResult);
-});
+    trim = !!config.trim;
+    minDistance = +config.minDistance || 0.5;
+    roundToNearest = +config.roundToNearest || 0.25;
+    sampleFrequency = +config.sampleFrequency || 0.001;
+    outputDirectory = config.outputDirectory;
 
-function parseResult(error, data){
+    if (outputDirectory) {
+        try {
+            fs.mkdirSync(outputDirectory);
+        }
+        catch (e) {
+            // no-op - already there
+        }
+    }
+    const promises = [];
+    for (let i = ~~0; i < ~~len; i++) {
+        const file = path.normalize(files[i]);
+        const fileInfo = path.parse(files[i]);
+        promises[i] = read(file).then(processPaths).then(interpolatedPaths => {
+            const jsonStr = JSON.stringify(interpolatedPaths, 2);
+            if (outputDirectory) {
+                fs.writeFile(path.normalize(`${outputDirectory}/${fileInfo.name}.pathData.json`), jsonStr);
+            }
+            else {
+                console.log(`{"${fileInfo.name}":${jsonStr}}`);
+            }
+        });
+    }
+}
 
-    const path = pathRegEx.exec(data)[1];
-    const paths = [];
+function processPaths(data) {
+    const interpolatedPaths = {};
+    let i = ~~0;
+    let result;
+
+    while (result = pathRegEx.exec(data)) {
+        const key = `path_${i}`;
+        interpolatedPaths[key] = interpolatePath(result[0]);
+        i++;
+    }
+
+    return Promise.resolve(interpolatedPaths);
+}
+
+function interpolatePath(path) {
+    const data = [];
+    let subPathStartX = 0;
+    let subPathStartY = 0;
     let offsetX = 0;
     let offsetY = 0;
     let args;
@@ -31,11 +98,20 @@ function parseResult(error, data){
         let code = match[1];
         let points = [];
         let point;
+
         while (point = pointRegEx.exec(match[2])) {
             points.push(+point[1], +point[2]);
         }
 
         switch (code) {
+            case 'z':
+            case 'Z':
+                offsetX = subPathStartX;
+                offsetY = subPathStartY;
+                args = [offsetX, offsetY];
+                calculator = calculateCoordinatesLinear;
+                break;
+
             case 'm':
                 offsetX += points[0];
                 offsetY += points[1];
@@ -44,6 +120,9 @@ function parseResult(error, data){
             case 'M':
                 offsetX = points[0];
                 offsetY = points[1];
+
+                subPathStartX = offsetX;
+                subPathStartY = offsetY;
                 break;
 
             case 'c':
@@ -79,16 +158,19 @@ function parseResult(error, data){
 
         if (calculator) {
             const pts = calculator.apply(null, args);
-            Array.prototype.push.apply(paths, pts);
-            offsetX += points[points.length - 1];
-            offsetY += points[points.length - 2];
+            const len = ~~points.length;
+            Array.prototype.push.apply(data, pts);
+            offsetX += points[len - 1];
+            offsetY += points[len - 2];
         }
     }
-    normalizePaths(paths);
-    fs.writeFile(destination, JSON.stringify({paths: paths}));
+    if (trim) {
+        trimPathOffsets(data);
+    }
+    return data;
 }
 
-function normalizePaths(paths) {
+function trimPathOffsets(paths) {
     let minX = Number.POSITIVE_INFINITY;
     let minY = Number.POSITIVE_INFINITY;
     let i = paths.length;
@@ -128,7 +210,7 @@ function calculatePointQuadratic(t, p1, p2, p3) {
 }
 
 function calculatePointCubic(t, p1, p2, p3, p4) {
-    const t2 = Math.pow(t, 2);
+    const t2 = t * t;
     const t3 = t2 * t;
     const oneMinusT = 1 - t;
 
@@ -147,12 +229,12 @@ function calculateCoordinatesLinear(startX, startY, endX, endY) {
         const deltaX = x - lastX;
         const deltaY = y - lastY;
         const dist = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
-        if (Math.abs(dist) > .5) {
-            pts.push(x - (x % .25), y - (y % .25));
+        if (Math.abs(dist) > minDistance) {
+            pts.push(x - (x % roundToNearest), y - (y % roundToNearest));
             lastX = x;
             lastY = y;
         }
-        t += .001;
+        t += sampleFrequency
     }
     return pts;
 }
@@ -169,8 +251,8 @@ function calculateCoordinatesQuad(startX, startY, ctrl1x, ctrl1y, endX, endY) {
         const deltaX = x - lastX;
         const deltaY = y - lastY;
         const dist = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
-        if (Math.abs(dist) > .5) {
-            pts.push(x - (x % .25), y - (y % .25));
+        if (Math.abs(dist) > minDistance) {
+            pts.push(x - (x % roundToNearest), y - (y % roundToNearest));
             lastX = x;
             lastY = y;
         }
@@ -191,8 +273,8 @@ function calculateCoordinatesCubic(startX, startY, ctrl1x, ctrl1y, ctrl2x, ctrl2
         const deltaX = x - lastX;
         const deltaY = y - lastY;
         const dist = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
-        if (Math.abs(dist) > .5) {
-            pts.push(x - (x % .25), y - (y % .25));
+        if (Math.abs(dist) > minDistance) {
+            pts.push(x - (x % roundToNearest), y - (y % roundToNearest));
             lastX = x;
             lastY = y;
         }
@@ -200,3 +282,5 @@ function calculateCoordinatesCubic(startX, startY, ctrl1x, ctrl1y, ctrl2x, ctrl2
     }
     return pts;
 }
+
+read(configPath).then(runJob);
