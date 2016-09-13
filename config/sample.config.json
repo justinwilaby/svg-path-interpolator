@@ -1,8 +1,4 @@
 {
-  "files": [
-    "sample.svg"
-  ],
-  "outputDirectory": "out/",
   "trim": true,
   "minDistance": 0.5,
   "roundToNearest": 0.25,

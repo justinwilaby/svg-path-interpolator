@@ -1,9 +1,18 @@
 # SVG Path Interpolator
 The SVG Path Interpolator produces point data representing interpolated values within an SVG path.  This is handy when you need to calculate complex paths for animation or drawing APIs beforehand.  Complex paths that include Bézier curves are converted to polygons with a configurable segment sampling size producing more points with greater precision or fewer points for speed.  Polygon path data can be used to animate, draw or for hit detection in games. 
 
+## Install
+```bash
+npm install svg-path-interpolator --save
+```
+or as a cli
+```bash
+npm install -g svg-path-interpolator
+```
+
 ## Usage
-See the `sample.config.json` for configuration options
-```js
+Create a config.json somewhere in your project. See the `sample.config.json` for configuration options
+```json
 {
   "files": [
     "sample.svg"
@@ -17,9 +26,12 @@ See the `sample.config.json` for configuration options
   "prettyIndent": 0
 }
 ```
-
+From your terminal, type
+```bash
+svgpi ./path/to/config.json
+```
 ### files
-The `files` array identifies the files to process.
+The `files` array identifies the SVG files to process. If the SVG contains multiple paths, each path will be interpolated and included in the output JSON as a named key using the format `path_${pathIndex}`.
 ### outputDirectory
 `outputDirectory` identifies where to write the path data.  If omitted, all path data is written to stdout.
 ### trim
