@@ -106,7 +106,7 @@ function calculateCoordinatesArc(startX, startY, rx, ry, angle, largeArc, sweep,
 
     const beziers = decomposeArcToCubic({x: startX, y: startY}, angle, rx, ry, largeArc, sweep, {x: endX, y: endY});
     // Triplet points - start of new bezier is end of last
-    for (let i = 0; i > beziers.length; i += 3) {
+    for (let i = 0; i < beziers.length; i += 3) {
         const ctrlPt1 = beziers[i];
         const ctrlPt2 = beziers[i + 1];
         const endPoint = beziers[i + 2];
