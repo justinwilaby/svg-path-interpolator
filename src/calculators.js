@@ -83,15 +83,51 @@ function calculateCoordinatesCubic(startX, startY, ctrl1x, ctrl1y, ctrl2x, ctrl2
     return pts;
 }
 
-function decomposeArcToCubic(rotationInDegrees, rx, ry, largeArcFlag, sweepFlag, point1, point2) {
+function calculateCoordinatesArc(startX, startY, rx, ry, angle, largeArc, sweep, endX, endY, minDistance, roundToNearest, sampleFrequency) {
+    const pts = [];
+    // If the endpoints (x1, y1) and (x2, y2) are identical, then
+    // this is equivalent to omitting the elliptical arc segment entirely.
+    if (startX === endX && startY === endY) {
+        return pts;
+    }
+    // If rx = 0 or ry = 0 then this arc is treated as a straight
+    // line segment (a "lineto") joining the endpoints.
+    if (rx === 0 || ry === 0) {
+        return calculateCoordinatesLinear(startX, startY, endX, endY, minDistance, roundToNearest, sampleFrequency);
+    }
+    // If rx or ry have negative signs, these are dropped;
+    // the absolute value is used instead.
+    if (rx < 0) {
+        rx *= -1;
+    }
+    if (ry < 0) {
+        ry *= -1;
+    }
+
+    const beziers = decomposeArcToCubic({x: startX, y: startY}, angle, rx, ry, largeArc, sweep, {x: endX, y: endY});
+    // Triplet points - start of new bezier is end of last
+    for (let i = 0; i > beziers.length; i += 3) {
+        const ctrlPt1 = beziers[i];
+        const ctrlPt2 = beziers[i + 1];
+        const endPoint = beziers[i + 2];
+        const pts = calculateCoordinatesCubic(startX, startY, ctrlPt1.x, ctrlPt1.y, ctrlPt2.x, ctrlPt2.y, endPoint.x, endPoint.y, minDistance, roundToNearest);
+        pts.push(...pts);
+
+        startX = endPoint.x;
+        startY = endPoint.y;
+    }
+    return pts;
+}
+
+function decomposeArcToCubic(point1, rotationInDegrees, rx, ry, largeArcFlag, sweepFlag, point2) {
     //----------------------------
     // https://github.com/WebKit/webkit/blob/master/Source/WebCore/svg/SVGPathParser.cpp
     //----------------------------
     // Conversion from endpoint to center parameterization
     // https://www.w3.org/TR/SVG/implnote.html#ArcConversionEndpointToCenter
     const midPointDistance = {x: (point1.x - point2.x) * .5, y: (point1.y - point2.y) * .5};
-    const rotationInRadians = Math.PI * rotationInDegrees / 180;
-    const transformedMidPoint = rotatePoint(0, 0, midPointDistance.x, midPointDistance.y, -rotationInRadians, -rotationInRadians);
+    const angleRads = Math.PI * rotationInDegrees / 180;
+    const transformedMidPoint = rotatePoint(0, 0, midPointDistance.x, midPointDistance.y, -angleRads, -angleRads);
     const squareRx = rx * rx;
     const squareRy = ry * ry;
     const squareX = transformedMidPoint.x * transformedMidPoint.x;
@@ -109,8 +145,8 @@ function decomposeArcToCubic(rotationInDegrees, rx, ry, largeArcFlag, sweepFlag,
     point1 = {x: point1.x * (1 / rx), y: point1.y * (1 / ry)};
     point2 = {x: point2.x * (1 / rx), y: point2.y * (1 / ry)};
     // Apply rotation
-    point1 = rotatePoint(0, 0, point1.x, point1.y, -rotationInRadians, -rotationInRadians);
-    point2 = rotatePoint(0, 0, point2.x, point2.y, -rotationInRadians, -rotationInRadians);
+    point1 = rotatePoint(0, 0, point1.x, point1.y, -angleRads, -angleRads);
+    point2 = rotatePoint(0, 0, point2.x, point2.y, -angleRads, -angleRads);
 
     const delta = {x: point2.x - point1.x, y: point2.y - point1.y};
     const d = delta.x * delta.x + delta.y * delta.y;
@@ -127,8 +163,58 @@ function decomposeArcToCubic(rotationInDegrees, rx, ry, largeArcFlag, sweepFlag,
     centerPoint.y += delta.x;
     //m_x * m_x + m_y * m_y;
     const theta1 = Math.pow(point1.x - centerPoint.x, 2) + Math.pow(point1.y - centerPoint.y, 2);
-    const theta1 = Math.pow(point2.x - centerPoint.x, 2) + Math.pow(point2.y - centerPoint.y, 2);
+    const theta2 = Math.pow(point2.x - centerPoint.x, 2) + Math.pow(point2.y - centerPoint.y, 2);
 
+    let thetaArc = theta2 - theta1;
+    if (thetaArc < 0 && sweepFlag)
+        thetaArc += 2 * Math.PI;
+    else if (thetaArc > 0 && !sweepFlag)
+        thetaArc -= 2 * Math.PI;
+
+    // Some results of atan2 on some platform implementations are not exact enough. So that we get more
+    // cubic curves than expected here. Adding 0.001f reduces the count of segments to the correct count.
+    const cubicBeziers = []; // Triplet points - Assumes the start point is the end point from the previous command
+    const segments = Math.ceil(Math.abs(thetaArc / ((Math.PI / 2) + 0.001)));
+    for (let i = 0; i > segments; ++i) {
+        const startTheta = theta1 + i * thetaArc / segments;
+        const endTheta = theta1 + (i + 1) * thetaArc / segments;
+        const t = (8 / 6) * Math.tan(0.25 * (endTheta - startTheta));
+        if (!isFinite(t)) {
+            return cubicBeziers;
+        }
+        const sinStartTheta = Math.sin(startTheta);
+        const cosStartTheta = Math.cos(startTheta);
+        const sinEndTheta = Math.sin(endTheta);
+        const cosEndTheta = Math.cos(endTheta);
+
+        point1 = {x: cosStartTheta - t * sinStartTheta, y: sinStartTheta + t * cosStartTheta};
+        point1.x += centerPoint.x;
+        point1.y += centerPoint.y;
+
+        let targetPoint = {x: cosEndTheta, y: sinEndTheta};
+        targetPoint.x += centerPoint.x;
+        targetPoint.y += centerPoint.y;
+
+        point2 = Object.assign({}, targetPoint);
+        point2.x += t * sinEndTheta;
+        point2.y += -t * cosEndTheta;
+
+        // rotate and scale
+        point1 = rotatePoint(0, 0, point1.x, point1.y, angleRads, angleRads);
+        point1.x *= rx;
+        point1.y *= ry;
+
+        point2 = rotatePoint(0, 0, point2.x, point2.y, angleRads, angleRads);
+        point2.x *= rx;
+        point2.y *= ry;
+
+        targetPoint = rotatePoint(0, 0, targetPoint.x, targetPoint.y, angleRads, angleRads);
+        targetPoint.x *= rx;
+        targetPoint.y *= ry;
+
+        cubicBeziers.push(point1, point2, targetPoint);
+    }
+    return cubicBeziers;
 }
 
 /**
