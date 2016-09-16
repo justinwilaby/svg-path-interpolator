@@ -3,7 +3,7 @@ const calculators = require('./calculators');
 
 const pathRegEx = /(?: d=")([\w.\-,\s]+)/g;
 const commandRegEx = /(m|l|c|q|z|a)(?: ?)([\d+-., ]+)/ig;
-const pointRegEx = /([-]?\d+\.*\d+)(?:,| )?([-]?\d+\.*\d+)/g;
+const pointRegEx = /([-]?\d+\.*\d*)(?:,| )?/g;
 
 let _config;
 
@@ -35,10 +35,22 @@ function interpolatePath(path) {
         let point;
 
         while (point = pointRegEx.exec(match[2])) {
-            points.push(+point[1], +point[2]);
+            points.push(+point[1]);
         }
 
         switch (code) {
+            case 'A':
+                points.unshift(offsetX, offsetY);
+                args = points;
+                calculator = calculators.calculateCoordinatesArc;
+                break;
+
+            case 'a':
+                points.unshift(0, 0);
+                args = applyOffset(offsetX, offsetY, points);
+                calculator = calculators.calculateCoordinatesArc;
+                break;
+
             case 'z':
             case 'Z':
                 offsetX = subPathStartX;
@@ -113,6 +125,9 @@ function trimPathOffsets(paths) {
     let i = paths.length;
     let x;
     let y;
+    if (!i) {
+        return;
+    }
     while (i -= 2) {
         x = paths[i];
         y = paths[i - 1];

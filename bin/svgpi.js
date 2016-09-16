@@ -35,10 +35,13 @@ function runJob(configJson) {
         const json = new SVGPathInterpolator(config).processSvg(svg);
         const jsonStr = JSON.stringify(json, null, (config.pretty ? config.prettyIndent : 0));
         if (outputFile) {
-            fs.writeFile(path.normalize(outputFile), jsonStr);
+            fs.writeFile(path.normalize(outputFile), jsonStr, err => {
+                process.exit(err);
+            });
         }
         else {
             console.log(jsonStr);
+            process.exit(0);
         }
     })
 }
