@@ -1,5 +1,5 @@
 {
-  "trim": true,
+  "trim": false,
   "minDistance": 0.5,
   "roundToNearest": 0.25,
   "sampleFrequency": 0.001,

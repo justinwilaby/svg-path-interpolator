@@ -162,8 +162,8 @@ function decomposeArcToCubic(point1, rotationInDegrees, rx, ry, largeArcFlag, sw
     centerPoint.x -= delta.y;
     centerPoint.y += delta.x;
 
-    const theta1 = Math.atan2(point1.x - centerPoint.x, point1.y - centerPoint.y);
-    const theta2 = Math.atan2(point2.x - centerPoint.x, point2.y - centerPoint.y);
+    const theta1 = Math.atan2(point1.y - centerPoint.y, point1.x - centerPoint.x);
+    const theta2 = Math.atan2(point2.y - centerPoint.y, point2.x - centerPoint.x);
 
     let thetaArc = theta2 - theta1;
     if (thetaArc < 0 && sweepFlag)
@@ -175,7 +175,7 @@ function decomposeArcToCubic(point1, rotationInDegrees, rx, ry, largeArcFlag, sw
     // cubic curves than expected here. Adding 0.001f reduces the count of segments to the correct count.
     const cubicBeziers = []; // Triplet points - Assumes the start point is the end point from the previous command
     const segments = Math.ceil(Math.abs(thetaArc / ((Math.PI / 2) + 0.001)));
-    for (let i = 0; i < segments + 1; i++) {
+    for (let i = 0; i < segments; i++) {
         const startTheta = theta1 + i * thetaArc / segments;
         const endTheta = theta1 + (i + 1) * thetaArc / segments;
         const t = (8 / 6) * Math.tan(0.25 * (endTheta - startTheta));
