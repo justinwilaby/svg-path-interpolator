@@ -135,8 +135,8 @@ function interpolatePath(path) {
             const pts = calculator(...args);
             const len = ~~points.length;
             data.push(...pts);
-            offsetX += points[len - 1];
-            offsetY += points[len - 2];
+            offsetY += points[len - 1];
+            offsetX += points[len - 2];
         }
     }
     if (_config.trim) {

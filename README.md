@@ -14,10 +14,6 @@ npm install -g svg-path-interpolator
 Create a config.json somewhere in your project. See the `sample.config.json` for configuration options
 ```json
 {
-  "files": [
-    "sample.svg"
-  ],
-  "outputDirectory": "out/",
   "trim": true,
   "minDistance": 0.5,
   "roundToNearest": 0.25,
@@ -28,12 +24,8 @@ Create a config.json somewhere in your project. See the `sample.config.json` for
 ```
 From your terminal, type
 ```bash
-svgpi ./path/to/config.json
+svgpi ./path/to/config.json ./path/to/target.svg ./output/fileName.json
 ```
-### files
-The `files` array identifies the SVG files to process. If the SVG contains multiple paths, each path will be interpolated and included in the output JSON as a named key using the format `path_${pathIndex}`.
-### outputDirectory
-`outputDirectory` identifies where to write the path data.  If omitted, all path data is written to stdout.
 ### trim
 When `trim` is `true`, paths that were translated are normalized and will begin at 0,0
 ### minDistance
