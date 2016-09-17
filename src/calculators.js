@@ -39,7 +39,7 @@ function calculateCoordinatesLinear(startX, startY, endX, endY, minDistance, rou
     return pts;
 }
 
-function calculateCoordinatesQuad(startX, startY, ctrl1x, ctrl1y, endX, endY, minDistance, roundToNearest) {
+function calculateCoordinatesQuad(startX, startY, ctrl1x, ctrl1y, endX, endY, minDistance, roundToNearest, sampleFrequency) {
     const pts = [];
     let t = 0;
     let lastX = startX;
@@ -56,12 +56,12 @@ function calculateCoordinatesQuad(startX, startY, ctrl1x, ctrl1y, endX, endY, mi
             lastX = x;
             lastY = y;
         }
-        t += .001;
+        t += sampleFrequency;
     }
     return pts;
 }
 
-function calculateCoordinatesCubic(startX, startY, ctrl1x, ctrl1y, ctrl2x, ctrl2y, endX, endY, minDistance, roundToNearest) {
+function calculateCoordinatesCubic(startX, startY, ctrl1x, ctrl1y, ctrl2x, ctrl2y, endX, endY, minDistance, roundToNearest, sampleFrequency) {
     const pts = [];
     let t = 0;
     let lastX = startX;
@@ -78,7 +78,7 @@ function calculateCoordinatesCubic(startX, startY, ctrl1x, ctrl1y, ctrl2x, ctrl2
             lastX = x;
             lastY = y;
         }
-        t += .001;
+        t += sampleFrequency;
     }
     return pts;
 }
@@ -110,7 +110,7 @@ function calculateCoordinatesArc(startX, startY, rx, ry, angle, largeArc, sweep,
         const ctrlPt1 = beziers[i];
         const ctrlPt2 = beziers[i + 1];
         const endPoint = beziers[i + 2];
-        const interpolatedPoints = calculateCoordinatesCubic(startX, startY, ctrlPt1.x, ctrlPt1.y, ctrlPt2.x, ctrlPt2.y, endPoint.x, endPoint.y, minDistance, roundToNearest);
+        const interpolatedPoints = calculateCoordinatesCubic(startX, startY, ctrlPt1.x, ctrlPt1.y, ctrlPt2.x, ctrlPt2.y, endPoint.x, endPoint.y, minDistance, roundToNearest, sampleFrequency);
         pts.push(...interpolatedPoints);
 
         startX = endPoint.x;
