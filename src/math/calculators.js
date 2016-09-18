@@ -242,9 +242,16 @@ function degToRads(deg){
     return Math.PI * deg / 180;
 }
 
+function radToDeg(rad){
+    return rad * 180 / Math.PI;
+}
+
 module.exports = {
     calculateCoordinatesArc,
     calculateCoordinatesCubic,
     calculateCoordinatesLinear,
-    calculateCoordinatesQuad
+    calculateCoordinatesQuad,
+    degToRads,
+    radToDeg,
+    rotatePoint
 };

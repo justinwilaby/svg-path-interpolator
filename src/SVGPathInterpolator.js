@@ -1,23 +1,82 @@
 "use strict";
-const calculators = require('./calculators');
+const parser = require('sax').parser(true);
+const calculators = require('./math/calculators');
+const SVGTransform = require('./math/SVGTransform');
 
-const pathRegEx = /(?: d=")([\w.\-,\s]+)/g;
 const commandRegEx = /(m|l|c|q|z|a|v|h)(?: ?)([\d+-., ]+)/ig;
-const pointRegEx = /([-]?\d+\.*\d*)(?:,| )?/g;
+const argumentsRegEx = /([-]?\d+\.*\d*)(?:,| )?/g;
+const transformRegEx = /(matrix|translate|scale|rotate|skewX|skewY)(?:\()(.*)(?:\))/;
 
 let _config;
 
-function processPaths(data) {
-    const interpolatedPaths = {};
-    let i = ~~0;
-    let result;
-
-    while (result = pathRegEx.exec(data)) {
-        const key = `path_${i++}`;
-        interpolatedPaths[key] = interpolatePath(result[0]);
+function parseArguments(source) {
+    const args = [];
+    let arg;
+    while (arg = argumentsRegEx.exec(source)) {
+        isFinite(arg[1]) ? arg[1] = +arg[1] : '' + arg[1];
+        args.push(+arg[1]);
     }
+    return args;
+}
 
+function processSVG(data) {
+    // const interpolatedPaths = {};
+    const interpolatedPaths = [];
+    const openTagsDepth = {};
+    const transforms = {};
+    let i = 0;
+
+    parser.onopentag = node => {
+        if (!openTagsDepth[node.name]) {
+            openTagsDepth[node.name] = 0;
+        }
+        const depth = openTagsDepth[node.name]++;
+        if (node.attributes.transform) {
+            transforms[depth + node.name] = node.attributes.transform;
+        }
+
+        if (node.name === 'path') {
+            let key = `path_${i++}`;
+            if (Object.keys(transforms).length) {
+                key += 'transformed'
+            }
+            const points = interpolatePath(node.attributes.d);
+            applyTransforms(transforms, points);
+            // interpolatedPaths[key] = points;
+            interpolatedPaths.push(...points);
+        }
+    };
+
+    parser.onclosetag = node => {
+        const depth = --openTagsDepth[node];
+        delete transforms[depth + node];
+    };
+    parser.write(data).close();
     return interpolatedPaths;
+}
+
+function applyTransforms(transforms, points) {
+    const keys = Object.keys(transforms);
+    if (!keys.length) {
+        return;
+    }
+    if (keys.length < 1) {
+        keys.sort().reverse();
+    }
+    keys.forEach(depth => {
+        const svgTransform = new SVGTransform();
+        const rawTransform = transforms[depth];
+        const [, type, rawArguments] = transformRegEx.exec(rawTransform);
+        const args = parseArguments(rawArguments);
+        svgTransform[type](...args);
+
+        const len = points.length;
+        for (let i = 0; i < len; i += 2) {
+            const {x, y} = svgTransform.map(points[i], points[i + 1]);
+            points[i] = x - (x % _config.roundToNearest);
+            points[i + 1] = y - (y % _config.roundToNearest);
+        }
+    });
 }
 
 function interpolatePath(path) {
@@ -27,16 +86,11 @@ function interpolatePath(path) {
     let offsetX = 0;
     let offsetY = 0;
     let args;
-    let calculator;
     let match;
     while (match = commandRegEx.exec(path)) {
-        let code = match[1];
-        let points = [];
-        let point;
-
-        while (point = pointRegEx.exec(match[2])) {
-            points.push(+point[1]);
-        }
+        const [, code, rawArguments] = match;
+        let points = parseArguments(rawArguments);
+        let calculator;
 
         switch (code) {
             case 'A':
@@ -254,6 +308,6 @@ module.exports = class SVGPathInterpolator {
             roundToNearest: this.roundToNearest,
             sampleFrequency: this.sampleFrequency
         };
-        return processPaths(svg);
+        return processSVG(svg);
     }
 };

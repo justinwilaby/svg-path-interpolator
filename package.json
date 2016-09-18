@@ -27,5 +27,8 @@
     "bezier",
     "curves",
     "polygon"
-  ]
+  ],
+  "dependencies": {
+    "sax": "^1.2.1"
+  }
 }
