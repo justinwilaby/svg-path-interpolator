@@ -3,7 +3,7 @@ const parser = require('sax').parser(true);
 const calculators = require('./math/calculators');
 const SVGTransform = require('./math/SVGTransform');
 
-const commandRegEx = /(m|l|c|q|z|a|v|h)(?: ?)([\d+-., ]+)/ig;
+const commandRegEx = /(m|l|c|q|z|a|v|h|s)(?: ?)([\d+-., ]+)/ig;
 const argumentsRegEx = /([-]?\d+\.*\d*)(?:,| )?/g;
 const transformRegEx = /(matrix|translate|scale|rotate|skewX|skewY)(?:\()(.*)(?:\))/;
 
@@ -87,60 +87,63 @@ function interpolatePath(path) {
     let offsetY = 0;
     let args;
     let match;
+    let lastCommand = {};
     while (match = commandRegEx.exec(path)) {
-        const [, code, rawArguments] = match;
+        const [, command, rawArguments] = match;
         let points = parseArguments(rawArguments);
-        let calculator;
 
-        switch (code) {
+        switch (command) {
             case 'A':
+            case 'C':
+            case 'L':
+            case 'Q':
                 points.unshift(offsetX, offsetY);
-                args = points;
-                calculator = calculators.calculateCoordinatesArc;
+                args = [points];
+                break;
+
+            case 'S':
+            case 's':
+            case 'T':
+            case 't':
+                let lastCtrlX;
+                let lastCtrlY;
+                const {command:lastC, points:lastP} = lastCommand;
+                const reg = command.toLowerCase() === 's' ? /^[cs]$/ : /^[qt]$/;
+                if (reg.test(lastC.toLowerCase())) {
+                    const {length} = lastP;
+                    lastCtrlX = lastP[length - 4];
+                    lastCtrlY = lastP[length - 3];
+                }
+                if (reg.test(lastC)) {
+                    lastCtrlX += offsetX;
+                    lastCtrlY += offsetY;
+                }
+
+                if (/^[st]$/.test(command)){
+                    points = applyOffset(offsetX, offsetY, points);
+                }
+                points.unshift(offsetX, offsetY, lastCtrlX, lastCtrlY);
+                args = [points];
                 break;
 
             case 'a':
-                points.unshift(0, 0);
-                args = applyOffset(offsetX, offsetY, points);
-                calculator = calculators.calculateCoordinatesArc;
-                break;
-
             case 'c':
+            case 'l':
+            case 'q':
                 points.unshift(0, 0);
-                args = applyOffset(offsetX, offsetY, points);
-                calculator = calculators.calculateCoordinatesCubic;
-                break;
-
-            case 'C':
-                points.unshift(offsetX, offsetY);
-                args = points;
-                calculator = calculators.calculateCoordinatesCubic;
+                args = [applyOffset(offsetX, offsetY, points)];
                 break;
 
             case 'H':
                 points.unshift(offsetX, offsetY);
                 points.push(offsetY);
-                args = points;
-                calculator = calculators.calculateCoordinatesLinear;
+                args = [points];
                 break;
 
             case 'h':
                 points.unshift(0, 0);
                 points.push(0);
-                args = applyOffset(offsetX, offsetY, points);
-                calculator = calculators.calculateCoordinatesLinear;
-                break;
-
-            case 'l':
-                points.unshift(0, 0);
-                args = applyOffset(offsetX, offsetY, points);
-                calculator = calculators.calculateCoordinatesLinear;
-                break;
-
-            case 'L':
-                points.unshift(offsetX, offsetY);
-                args = points;
-                calculator = calculators.calculateCoordinatesLinear;
+                args = [applyOffset(offsetX, offsetY, points)];
                 break;
 
             case 'm':
@@ -156,33 +159,24 @@ function interpolatePath(path) {
                 subPathStartY = offsetY;
                 break;
 
-            case 'q':
-                points.unshift(0, 0);
-                args = applyOffset(offsetX, offsetY, points);
-                calculator = calculators.calculateCoordinatesQuad;
-                break;
-
             case 'V':
                 points.unshift(offsetX, offsetY, offsetX);
-                args = points;
-                calculator = calculators.calculateCoordinatesLinear;
+                args = [points];
                 break;
 
             case 'v':
                 points.unshift(0, 0, 0);
-                args = applyOffset(offsetX, offsetY, points);
-                calculator = calculators.calculateCoordinatesLinear;
+                args = [applyOffset(offsetX, offsetY, points)];
                 break;
 
             case 'z':
             case 'Z':
                 offsetX = subPathStartX;
                 offsetY = subPathStartY;
-                args = [offsetX, offsetY];
-                calculator = calculators.calculateCoordinatesLinear;
+                args = [[offsetX, offsetY]];
                 break;
         }
-
+        const calculator = calculators[command.toLowerCase()];
         if (calculator) {
             const {minDistance, roundToNearest, sampleFrequency} = _config;
             args.push(minDistance, roundToNearest, sampleFrequency);
@@ -192,6 +186,7 @@ function interpolatePath(path) {
             offsetY += points[len - 1];
             offsetX += points[len - 2];
         }
+        lastCommand = {command, points};
     }
     if (_config.trim) {
         trimPathOffsets(data);

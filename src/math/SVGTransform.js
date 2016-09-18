@@ -45,8 +45,8 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-const degToRads = require('./calculators').degToRads;
-const radToDeg = require('./calculators').radToDeg;
+const degToRads = require('./utils').degToRads;
+const radToDeg = require('./utils').radToDeg;
 
 class SVGTransform {
     constructor(a = 1, b = 0, c = 0, d = 1, e = 0, f = 0) {
@@ -113,10 +113,8 @@ class SVGTransform {
         result.m_transform[1] = -m_transform[1] / determinant;
         result.m_transform[2] = -m_transform[2] / determinant;
         result.m_transform[3] = m_transform[0] / determinant;
-        result.m_transform[4] = (m_transform[2] * m_transform[5]
-            - m_transform[3] * m_transform[4]) / determinant;
-        result.m_transform[5] = (m_transform[1] * m_transform[4]
-            - m_transform[0] * m_transform[5]) / determinant;
+        result.m_transform[4] = (m_transform[2] * m_transform[5] - m_transform[3] * m_transform[4]) / determinant;
+        result.m_transform[5] = (m_transform[1] * m_transform[4] - m_transform[0] * m_transform[5]) / determinant;
 
         return result;
     }

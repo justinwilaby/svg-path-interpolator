@@ -1,3 +1,8 @@
+const rotatePoint = require('./utils').rotatePoint;
+const degToRads = require('./utils').degToRads;
+const isNullOrUndefined = require('./utils').isNullOrUndefined;
+const SVGTransform = require('./SVGTransform');
+
 // Calculators
 // https://pomax.github.io/bezierinfo/
 function calculateLinear(t, p1, p2) {
@@ -17,105 +22,185 @@ function calculatePointCubic(t, p1, p2, p3, p4) {
     return p1 * Math.pow(oneMinusT, 3) + p2 * 3 * (oneMinusT * oneMinusT) * t + p3 * 3 * oneMinusT * t2 + p4 * t3;
 }
 
-function calculateCoordinatesLinear(startX, startY, endX, endY, minDistance, roundToNearest, sampleFrequency) {
+function calculateCoordinatesLinear(points, minDistance, roundToNearest, sampleFrequency) {
     const pts = [];
-    let t = 0;
-    let lastX = startX;
-    let lastY = startY;
-    while (t <= 1.0000000000000007) {
-        const x = calculateLinear(t, startX, endX);
-        const y = calculateLinear(t, startY, endY);
+    let [startX, startY] = points.splice(0, 2);
 
-        const deltaX = x - lastX;
-        const deltaY = y - lastY;
-        const dist = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
-        if (Math.abs(dist) > minDistance) {
-            pts.push(x - (x % roundToNearest), y - (y % roundToNearest));
-            lastX = x;
-            lastY = y;
+    for (let i = 0; i < points.length; i += 2) {
+        let endX = points[i];
+        let endY = points[i + 1];
+        let t = 0;
+        let lastX = startX;
+        let lastY = startY;
+        while (t <= 1.0000000000000007) {
+            const x = calculateLinear(t, startX, endX);
+            const y = calculateLinear(t, startY, endY);
+
+            const deltaX = x - lastX;
+            const deltaY = y - lastY;
+            const dist = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
+            if (Math.abs(dist) > minDistance) {
+                pts.push(x - (x % roundToNearest), y - (y % roundToNearest));
+                lastX = x;
+                lastY = y;
+            }
+            t += sampleFrequency
         }
-        t += sampleFrequency
+        startX = endX;
+        startY = endY;
     }
     return pts;
 }
 
-function calculateCoordinatesQuad(startX, startY, ctrl1x, ctrl1y, endX, endY, minDistance, roundToNearest, sampleFrequency) {
+function calculateCoordinatesQuad(points, minDistance, roundToNearest, sampleFrequency) {
     const pts = [];
-    let t = 0;
-    let lastX = startX;
-    let lastY = startY;
-    while (t <= 1.0000000000000007) {
-        const x = calculatePointQuadratic(t, startX, ctrl1x, endX);
-        const y = calculatePointQuadratic(t, startY, ctrl1y, endY);
+    let [startX, startY] = points.splice(0, 2);
 
-        const deltaX = x - lastX;
-        const deltaY = y - lastY;
-        const dist = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
-        if (Math.abs(dist) > minDistance) {
-            pts.push(x - (x % roundToNearest), y - (y % roundToNearest));
-            lastX = x;
-            lastY = y;
+    for (let i = 0; i < points.length; i += 4) {
+        let ctrl1x = points[i];
+        let ctrl1y = points[i + 1];
+        let endX = points[i + 2];
+        let endY = points[i + 3];
+
+        let t = 0;
+        let lastX = startX;
+        let lastY = startY;
+        while (t <= 1.0000000000000007) {
+            const x = calculatePointQuadratic(t, startX, ctrl1x, endX);
+            const y = calculatePointQuadratic(t, startY, ctrl1y, endY);
+
+            const deltaX = x - lastX;
+            const deltaY = y - lastY;
+            const dist = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
+            if (Math.abs(dist) > minDistance) {
+                pts.push(x - (x % roundToNearest), y - (y % roundToNearest));
+                lastX = x;
+                lastY = y;
+            }
+            t += sampleFrequency;
         }
-        t += sampleFrequency;
+        startX = endX;
+        startY = endY;
     }
+
     return pts;
 }
 
-function calculateCoordinatesCubic(startX, startY, ctrl1x, ctrl1y, ctrl2x, ctrl2y, endX, endY, minDistance, roundToNearest, sampleFrequency) {
+function calculateCoordinatesCubic(points, minDistance, roundToNearest, sampleFrequency) {
     const pts = [];
-    let t = 0;
-    let lastX = startX;
-    let lastY = startY;
-    while (t <= 1.0000000000000007) {
-        const x = calculatePointCubic(t, startX, ctrl1x, ctrl2x, endX);
-        const y = calculatePointCubic(t, startY, ctrl1y, ctrl2y, endY);
+    let [startX, startY] = points.splice(0, 2);
 
-        const deltaX = x - lastX;
-        const deltaY = y - lastY;
-        const dist = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
-        if (Math.abs(dist) > minDistance) {
-            pts.push(x - (x % roundToNearest), y - (y % roundToNearest));
-            lastX = x;
-            lastY = y;
+    for (let i = 0; i < points.length; i += 6) {
+        let ctrl1x = points[i];
+        let ctrl1y = points[i + 1];
+        let ctrl2x = points[i + 2];
+        let ctrl2y = points[i + 3];
+        let endX = points[i + 4];
+        let endY = points[i + 5];
+        let t = 0;
+        let lastX = startX;
+        let lastY = startY;
+        while (t <= 1.0000000000000007) {
+            const x = calculatePointCubic(t, startX, ctrl1x, ctrl2x, endX);
+            const y = calculatePointCubic(t, startY, ctrl1y, ctrl2y, endY);
+
+            const deltaX = x - lastX;
+            const deltaY = y - lastY;
+            const dist = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
+            if (Math.abs(dist) > minDistance) {
+                pts.push(x - (x % roundToNearest), y - (y % roundToNearest));
+                lastX = x;
+                lastY = y;
+            }
+            t += sampleFrequency;
         }
-        t += sampleFrequency;
+        startX = endX;
+        startY = endY;
     }
+
     return pts;
 }
 
-function calculateCoordinatesArc(startX, startY, rx, ry, angle, largeArc, sweep, endX, endY, minDistance, roundToNearest, sampleFrequency) {
+function calculateCoordinatesSmoothCubic(points, minDistance, roundToNearest, sampleFrequency) {
     const pts = [];
-    // If the endpoints (x1, y1) and (x2, y2) are identical, then
-    // this is equivalent to omitting the elliptical arc segment entirely.
-    if (startX === endX && startY === endY) {
-        return pts;
+    let [startX, startY, previousCtrl2x, previousCtrl2y] = points.splice(0, 4);
+
+    for (let i = 0; i < points.length; i += 4) {
+        const ctrl2x = points[i];
+        const ctrl2y = points[i + 1];
+        const endX = points[i + 2];
+        const endY = points[i + 3];
+        if (isNullOrUndefined(previousCtrl2x) || isNullOrUndefined(previousCtrl2y)) {
+            previousCtrl2x = startX;
+            previousCtrl2y = startY;
+        }
+
+        let svgTransform = new SVGTransform();
+        svgTransform.flipX();
+        svgTransform.flipY();
+
+        let {x:ctrl1x, y:ctrl1y} = svgTransform.map(previousCtrl2x - startX, previousCtrl2y - startY);
+        ctrl1x += startX;
+        ctrl1y += startY;
+        const interpolatedPts = calculateCoordinatesCubic([startX, startY, ctrl1x, ctrl1y, ctrl2x, ctrl2y, endX, endY], minDistance, roundToNearest, sampleFrequency);
+        pts.push(...interpolatedPts);
+
+        startX = endX;
+        startY = endY;
+        previousCtrl2x = ctrl2x;
+        previousCtrl2y = ctrl2y;
     }
-    // If rx = 0 or ry = 0 then this arc is treated as a straight
-    // line segment (a "lineto") joining the endpoints.
-    if (rx === 0 || ry === 0) {
-        return calculateCoordinatesLinear(startX, startY, endX, endY, minDistance, roundToNearest, sampleFrequency);
-    }
-    // If rx or ry have negative signs, these are dropped;
-    // the absolute value is used instead.
-    if (rx < 0) {
-        rx *= -1;
-    }
-    if (ry < 0) {
-        ry *= -1;
+}
+
+function calculateCoordinatesArc(points, minDistance, roundToNearest, sampleFrequency) {
+    const pts = [];
+    let [startX, startY] = points.splice(0, 2);
+
+    for (let i = 0; i < points.length; i += 7) {
+        let rx = points[i];
+        let ry = points[i + 1];
+        let angle = points[i + 2];
+        let largeArc = points[i + 3];
+        let sweep = points[i + 4];
+        let endX = points[i + 5];
+        let endY = points[i + 6];
+        // If the endpoints (x1, y1) and (x2, y2) are identical, then
+        // this is equivalent to omitting the elliptical arc segment entirely.
+        if (startX === endX && startY === endY) {
+            continue;
+        }
+        // If rx = 0 or ry = 0 then this arc is treated as a straight
+        // line segment (a "lineto") joining the endpoints.
+        if (rx === 0 || ry === 0) {
+            pts.push(...calculateCoordinatesLinear([startX, startY, endX, endY], minDistance, roundToNearest, sampleFrequency));
+            continue;
+        }
+        // If rx or ry have negative signs, these are dropped;
+        // the absolute value is used instead.
+        if (rx < 0) {
+            rx *= -1;
+        }
+        if (ry < 0) {
+            ry *= -1;
+        }
+
+        const beziers = decomposeArcToCubic({x: startX, y: startY}, angle, rx, ry, largeArc, sweep, {x: endX, y: endY});
+        // Triplet points - start of new bezier is end of last
+        for (let i = 0; i < beziers.length; i += 3) {
+            const ctrlPt1 = beziers[i];
+            const ctrlPt2 = beziers[i + 1];
+            const endPoint = beziers[i + 2];
+            const points = [startX, startY, ctrlPt1.x, ctrlPt1.y, ctrlPt2.x, ctrlPt2.y, endPoint.x, endPoint.y];
+            const interpolatedPoints = calculateCoordinatesCubic(points, minDistance, roundToNearest, sampleFrequency);
+            pts.push(...interpolatedPoints);
+
+            startX = endPoint.x;
+            startY = endPoint.y;
+        }
+        startX = endX;
+        startY = endY;
     }
 
-    const beziers = decomposeArcToCubic({x: startX, y: startY}, angle, rx, ry, largeArc, sweep, {x: endX, y: endY});
-    // Triplet points - start of new bezier is end of last
-    for (let i = 0; i < beziers.length; i += 3) {
-        const ctrlPt1 = beziers[i];
-        const ctrlPt2 = beziers[i + 1];
-        const endPoint = beziers[i + 2];
-        const interpolatedPoints = calculateCoordinatesCubic(startX, startY, ctrlPt1.x, ctrlPt1.y, ctrlPt2.x, ctrlPt2.y, endPoint.x, endPoint.y, minDistance, roundToNearest, sampleFrequency);
-        pts.push(...interpolatedPoints);
-
-        startX = endPoint.x;
-        startY = endPoint.y;
-    }
     return pts;
 }
 
@@ -217,41 +302,13 @@ function decomposeArcToCubic(point1, rotationInDegrees, rx, ry, largeArcFlag, sw
     return cubicBeziers;
 }
 
-/**
- * Rotates a point around the given origin
- * by the specified radians and returns the
- * rotated point.
- *
- * @param originX The x coordinate of the point to rotate around.
- * @param originY The y coordinate of the point to rotate around.
- * @param x The x coordinate of the point to be rotated.
- * @param y The y coordinate of the point to be rotated.
- * @param radiansX Radians to rotate along the x axis.
- * @param radiansY Radians to rotate along the y axis.
- *
- * @returns {Object} The point with the rotated coordinates.
- */
-function rotatePoint(originX, originY, x, y, radiansX, radiansY) {
-    const v = {x: x - originX, y: y - originY};
-    const vx = (v.x * Math.cos(radiansX)) - (v.y * Math.sin(radiansX));
-    const vy = (v.x * Math.sin(radiansY)) + (v.y * Math.cos(radiansY));
-    return {x: vx + originX, y: vy + originY};
-}
-
-function degToRads(deg){
-    return Math.PI * deg / 180;
-}
-
-function radToDeg(rad){
-    return rad * 180 / Math.PI;
-}
-
 module.exports = {
-    calculateCoordinatesArc,
-    calculateCoordinatesCubic,
-    calculateCoordinatesLinear,
-    calculateCoordinatesQuad,
-    degToRads,
-    radToDeg,
-    rotatePoint
+    a: calculateCoordinatesArc,
+    c: calculateCoordinatesCubic,
+    h: calculateCoordinatesLinear,
+    l: calculateCoordinatesLinear,
+    q: calculateCoordinatesQuad,
+    s: calculateCoordinatesSmoothCubic,
+    v: calculateCoordinatesLinear,
+    z: calculateCoordinatesLinear
 };
