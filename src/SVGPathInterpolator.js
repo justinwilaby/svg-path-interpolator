@@ -107,23 +107,25 @@ function interpolatePath(path) {
             case 't':
                 let lastCtrlX;
                 let lastCtrlY;
-                const {command:lastC, points:lastP} = lastCommand;
+                const {command:lastC, points:lastP, offsets:lastO} = lastCommand;
                 const reg = command.toLowerCase() === 's' ? /^[cs]$/ : /^[qt]$/;
                 if (reg.test(lastC.toLowerCase())) {
                     const {length} = lastP;
                     lastCtrlX = lastP[length - 4];
                     lastCtrlY = lastP[length - 3];
                 }
+                args = points.concat();
+
                 if (reg.test(lastC)) {
-                    lastCtrlX += offsetX;
-                    lastCtrlY += offsetY;
+                    lastCtrlX += lastO.offsetX;
+                    lastCtrlY += lastO.offsetY;
                 }
 
-                if (/^[st]$/.test(command)){
-                    points = applyOffset(offsetX, offsetY, points);
+                if (/^[st]$/.test(command)) {
+                    args = applyOffset(offsetX, offsetY, args);
                 }
-                points.unshift(offsetX, offsetY, lastCtrlX, lastCtrlY);
-                args = [points];
+                args.unshift(offsetX, offsetY, lastCtrlX, lastCtrlY);
+                args = [args];
                 break;
 
             case 'a':
@@ -147,16 +149,15 @@ function interpolatePath(path) {
                 break;
 
             case 'm':
-                offsetX += points[0];
-                offsetY += points[1];
+                subPathStartX = offsetX;
+                subPathStartY = offsetY;
+                args = [applyOffset(offsetX, offsetY, points.slice(2))];
                 break;
 
             case 'M':
-                offsetX = points[0];
-                offsetY = points[1];
-
                 subPathStartX = offsetX;
                 subPathStartY = offsetY;
+                args = [points.slice(2)];
                 break;
 
             case 'V':
@@ -171,22 +172,28 @@ function interpolatePath(path) {
 
             case 'z':
             case 'Z':
-                offsetX = subPathStartX;
-                offsetY = subPathStartY;
-                args = [[offsetX, offsetY]];
+                args = [[subPathStartX, subPathStartY]];
                 break;
         }
         const calculator = calculators[command.toLowerCase()];
+        const offsets = {offsetX, offsetY};
         if (calculator) {
             const {minDistance, roundToNearest, sampleFrequency} = _config;
             args.push(minDistance, roundToNearest, sampleFrequency);
             const pts = calculator(...args);
-            const len = ~~points.length;
             data.push(...pts);
-            offsetY += points[len - 1];
-            offsetX += points[len - 2];
+            const len = ~~points.length;
+
+            if (command.toLowerCase() === command) {
+                offsetY += points[len - 1];
+                offsetX += points[len - 2];
+            }
+            else {
+                offsetY = points[len - 1];
+                offsetX = points[len - 2];
+            }
         }
-        lastCommand = {command, points};
+        lastCommand = {command, points, offsets};
     }
     if (_config.trim) {
         trimPathOffsets(data);
@@ -221,7 +228,7 @@ function trimPathOffsets(paths) {
     }
 }
 
-function applyOffset(offsetX, offsetY, coords) {
+function applyOffset(offsetX, offsetY, coords = []) {
     return coords.map((value, index) => {
         return value + (index % 2 ? offsetY : offsetX);
     });

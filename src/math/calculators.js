@@ -135,13 +135,10 @@ function calculateCoordinatesSmoothCubic(points, minDistance, roundToNearest, sa
             previousCtrl2y = startY;
         }
 
-        let svgTransform = new SVGTransform();
-        svgTransform.flipX();
-        svgTransform.flipY();
+        let svgTransform = new SVGTransform(1, 0, 0, 1, previousCtrl2x - startX, previousCtrl2y - startY).inverse();
+        let {x:ctrl1x, y:ctrl1y} = svgTransform.map(startX, startY);
 
-        let {x:ctrl1x, y:ctrl1y} = svgTransform.map(previousCtrl2x - startX, previousCtrl2y - startY);
-        ctrl1x += startX;
-        ctrl1y += startY;
+        console.log(ctrl1x - previousCtrl2x, ctrl1y - previousCtrl2y);
         const interpolatedPts = calculateCoordinatesCubic([startX, startY, ctrl1x, ctrl1y, ctrl2x, ctrl2y, endX, endY], minDistance, roundToNearest, sampleFrequency);
         pts.push(...interpolatedPts);
 
@@ -150,6 +147,7 @@ function calculateCoordinatesSmoothCubic(points, minDistance, roundToNearest, sa
         previousCtrl2x = ctrl2x;
         previousCtrl2y = ctrl2y;
     }
+    return pts;
 }
 
 function calculateCoordinatesArc(points, minDistance, roundToNearest, sampleFrequency) {
@@ -307,6 +305,7 @@ module.exports = {
     c: calculateCoordinatesCubic,
     h: calculateCoordinatesLinear,
     l: calculateCoordinatesLinear,
+    m: calculateCoordinatesLinear,
     q: calculateCoordinatesQuad,
     s: calculateCoordinatesSmoothCubic,
     v: calculateCoordinatesLinear,
