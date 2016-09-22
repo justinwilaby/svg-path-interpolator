@@ -138,7 +138,6 @@ function calculateCoordinatesSmoothCubic(points, minDistance, roundToNearest, sa
         let svgTransform = new SVGTransform(1, 0, 0, 1, previousCtrl2x - startX, previousCtrl2y - startY).inverse();
         let {x:ctrl1x, y:ctrl1y} = svgTransform.map(startX, startY);
 
-        console.log(ctrl1x - previousCtrl2x, ctrl1y - previousCtrl2y);
         const interpolatedPts = calculateCoordinatesCubic([startX, startY, ctrl1x, ctrl1y, ctrl2x, ctrl2y, endX, endY], minDistance, roundToNearest, sampleFrequency);
         pts.push(...interpolatedPts);
 

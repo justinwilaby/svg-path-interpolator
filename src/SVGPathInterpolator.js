@@ -20,11 +20,11 @@ function parseArguments(source) {
 }
 
 function processSVG(data) {
-    // const interpolatedPaths = {};
-    const interpolatedPaths = [];
     const openTagsDepth = {};
     const transforms = {};
-    let i = 0;
+    const {joinPathData} = _config;
+    const interpolatedPaths = joinPathData ? [] : {};
+    let i = Date.now();
 
     parser.onopentag = node => {
         if (!openTagsDepth[node.name]) {
@@ -36,14 +36,15 @@ function processSVG(data) {
         }
 
         if (node.name === 'path') {
-            let key = `path_${i++}`;
-            if (Object.keys(transforms).length) {
-                key += 'transformed'
-            }
             const points = interpolatePath(node.attributes.d);
             applyTransforms(transforms, points);
-            // interpolatedPaths[key] = points;
-            interpolatedPaths.push(...points);
+            if (!joinPathData){
+                let key = node.attributes.id || `path_${i++}`;
+                interpolatedPaths[key] = points;
+            }
+            else{
+                interpolatedPaths.push(...points);
+            }
         }
     };
 
@@ -293,19 +294,17 @@ module.exports = class SVGPathInterpolator {
      */
 
     constructor(config = {
-        trim: true,
+        joinPathData: false,
         minDistance: +0.5,
         roundToNearest: +0.25,
-        sampleFrequency: +0.001,
-        pretty: false,
-        prettyIndent: ~~0
+        sampleFrequency: +0.001
     }) {
         Object.assign(this, config);
     }
 
     processSvg(svg) {
         _config = {
-            trim: this.trim,
+            joinPathData: this.joinPathData,
             minDistance: this.minDistance,
             roundToNearest: this.roundToNearest,
             sampleFrequency: this.sampleFrequency
