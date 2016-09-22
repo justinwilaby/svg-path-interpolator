@@ -1,9 +1,5 @@
 {
-  "files": [
-    "sample.svg"
-  ],
-  "outputDirectory": "out/",
-  "trim": true,
+  "joinPathData": true,
   "minDistance": 0.5,
   "roundToNearest": 0.25,
   "sampleFrequency": 0.001,
