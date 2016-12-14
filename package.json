@@ -13,7 +13,9 @@
   },
   "main": "src/SVGPathInterpolator.js",
   "files": [
-    "src"
+    "src",
+    "bin",
+    "config"
   ],
   "keywords": [
     "svg",
