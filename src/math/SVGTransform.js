@@ -127,13 +127,18 @@ class SVGTransform {
     multiply(other){
         const m_transform = this.m_transform;
         const trans = new SVGTransform();
+        const om_transform = other.m_transform;
+        const tm_transform = trans.m_transform;
 
-        trans.m_transform[0] = other.m_transform[0] * m_transform[0] + other.m_transform[1] * m_transform[2];
-        trans.m_transform[1] = other.m_transform[0] * m_transform[1] + other.m_transform[1] * m_transform[3];
-        trans.m_transform[2] = other.m_transform[2] * m_transform[0] + other.m_transform[3] * m_transform[2];
-        trans.m_transform[3] = other.m_transform[2] * m_transform[1] + other.m_transform[3] * m_transform[3];
-        trans.m_transform[4] = other.m_transform[4] * m_transform[0] + other.m_transform[5] * m_transform[2] + m_transform[4];
-        trans.m_transform[5] = other.m_transform[4] * m_transform[1] + other.m_transform[5] * m_transform[3] + m_transform[5];
+        tm_transform[0] = om_transform[0] * m_transform[0] + om_transform[1] * m_transform[2];
+        tm_transform[1] = om_transform[0] * m_transform[1] + om_transform[1] * m_transform[3];
+        tm_transform[2] = om_transform[2] * m_transform[0] + om_transform[3] * m_transform[2];
+        tm_transform[3] = om_transform[2] * m_transform[1] + om_transform[3] * m_transform[3];
+        tm_transform[4] = om_transform[4] * m_transform[0] + om_transform[5] * m_transform[2] + m_transform[4];
+        tm_transform[5] = om_transform[4] * m_transform[1] + om_transform[5] * m_transform[3] + m_transform[5];
+
+        this.m_transform = trans.m_transform;
+        return this;
     }
 
     rotate(degrees, x, y){
@@ -151,6 +156,7 @@ class SVGTransform {
         if (translateFlag){
             this.translate(-x, -y);
         }
+        return this;
     }
 
     scale(sx, sy){
@@ -162,6 +168,8 @@ class SVGTransform {
         m_transform[1] *= sx;
         m_transform[2] *= sy;
         m_transform[3] *= sy;
+
+        return this;
     }
 
     translate(tx, ty){
@@ -169,23 +177,24 @@ class SVGTransform {
         if (this.isIdentityOrTranslation()) {
             m_transform[4] += tx;
             m_transform[5] += ty;
-            return;
+            return this;
         }
 
         m_transform[4] += tx * m_transform[0] + ty * m_transform[2];
         m_transform[5] += tx * m_transform[1] + ty * m_transform[3];
+        return this;
     }
 
     rotateFromVector(x, y){
-        this.rotate(radToDeg(Math.atan2(y, x)));
+        return this.rotate(radToDeg(Math.atan2(y, x)));
     }
 
     flipX(){
-        this.scale(-1, 1);
+        return this.scale(-1, 1);
     }
 
     flipY(){
-        this.scale(1, -1);
+        return this.scale(1, -1);
     }
 
     shear(sx, sy){
@@ -197,18 +206,19 @@ class SVGTransform {
         m_transform[1] += sy * m_transform[3];
         m_transform[2] += sx * a;
         m_transform[3] += sx * b;
+        return this;
     }
 
     skew(angleX, angleY){
-        this.shear(Math.tan(degToRads(angleX)), Math.tan(degToRads(angleY)));
+        return this.shear(Math.tan(degToRads(angleX)), Math.tan(degToRads(angleY)));
     }
 
     skewX(angle){
-        this.shear(Math.tan(degToRads(angle)), 0);
+        return this.shear(Math.tan(degToRads(angle)), 0);
     }
 
     skewY(angle){
-        this.shear(0, Math.tan(degToRads(angle)));
+        return this.shear(0, Math.tan(degToRads(angle)));
     }
 
     map(x, y){
