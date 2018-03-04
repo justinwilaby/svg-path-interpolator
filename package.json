@@ -9,7 +9,7 @@
     "url": "https://github.com/justinwilaby/svg-path-interpolator.git"
   },
   "bin": {
-    "svgpi": "./bin/svgpi.js"
+    "svgpi": "./bin/svgpi"
   },
   "main": "src/SVGPathInterpolator.js",
   "files": [
