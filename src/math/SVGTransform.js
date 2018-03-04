@@ -50,7 +50,7 @@ const radToDeg = require('./utils').radToDeg;
 
 class SVGTransform {
     constructor(a = 1, b = 0, c = 0, d = 1, e = 0, f = 0) {
-        this.m_transform = [a, b, c, d, e, f];
+        this.m_transform = [+a, +b, +c, +d, +e, +f];
     }
 
     makeIdentity() {
@@ -59,12 +59,12 @@ class SVGTransform {
 
     setMatrix(a = 1, b = 0, c = 0, d = 1, e = 0, f = 0) {
         const m_transform = this.m_transform;
-        m_transform[0] = a;
-        m_transform[1] = b;
-        m_transform[2] = c;
-        m_transform[3] = d;
-        m_transform[4] = e;
-        m_transform[5] = f;
+        m_transform[0] = +a;
+        m_transform[1] = +b;
+        m_transform[2] = +c;
+        m_transform[3] = +d;
+        m_transform[4] = +e;
+        m_transform[5] = +f;
     }
 
     matrix(a = 1, b = 0, c = 0, d = 1, e = 0, f = 0){
@@ -80,7 +80,7 @@ class SVGTransform {
     }
 
     static det(transform) {
-        return transform[0] * transform[3] - transform[1] * transform[2];
+        return +(transform[0] * transform[3] - transform[1] * transform[2]);
     }
 
     get xScale() {

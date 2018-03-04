@@ -1,9 +1,9 @@
-"use strict";
+'use strict';
 const parser = require('sax').parser(true);
 const calculators = require('./math/calculators');
 const SVGTransform = require('./math/SVGTransform');
 
-const commandRegEx = /(m|l|c|q|z|a|v|h|s)(?: ?)([\d+-., ]+)/ig;
+const commandRegEx = /(m|l|c|q|z|a|v|h|s|z)(?: ?)([\d+-., ]*)/ig;
 const argumentsRegEx = /([-]?\d+\.*\d*)(?:,| )?/g;
 const transformRegEx = /(matrix|translate|scale|rotate|skewX|skewY)(?:\()(.*)(?:\))/;
 
@@ -38,11 +38,11 @@ function processSVG(data) {
         if (node.name === 'path') {
             const points = interpolatePath(node.attributes.d);
             applyTransforms(transforms, points);
-            if (!joinPathData){
+            if (!joinPathData) {
                 let key = node.attributes.id || `path_${i++}`;
                 interpolatedPaths[key] = points;
             }
-            else{
+            else {
                 interpolatedPaths.push(...points);
             }
         }
@@ -108,33 +108,41 @@ function interpolatePath(path) {
             case 't':
                 let lastCtrlX;
                 let lastCtrlY;
-                const {command:lastC, points:lastP, offsets:lastO} = lastCommand;
+                const {command:lastC, points:lastP} = lastCommand;
                 const reg = command.toLowerCase() === 's' ? /^[cs]$/ : /^[qt]$/;
                 if (reg.test(lastC.toLowerCase())) {
                     const {length} = lastP;
-                    lastCtrlX = lastP[length - 4];
                     lastCtrlY = lastP[length - 3];
+                    lastCtrlX = lastP[length - 4];
                 }
-                args = points.concat();
-
-                if (reg.test(lastC)) {
-                    lastCtrlX += lastO.offsetX;
-                    lastCtrlY += lastO.offsetY;
-                }
+                args = points;
 
                 if (/^[st]$/.test(command)) {
-                    args = applyOffset(offsetX, offsetY, args);
+                    applyOffset(offsetX, offsetY, args, 4);
                 }
                 args.unshift(offsetX, offsetY, lastCtrlX, lastCtrlY);
                 args = [args];
                 break;
 
             case 'a':
+                points.unshift(0, 0);
+                args = [applyOffset(offsetX, offsetY, points, 7)];
+                break;
+
             case 'c':
+                applyOffset(offsetX, offsetY, points, 6);
+                points.unshift(offsetX, offsetY);
+                args = [points];
+                break;
+
             case 'l':
+                points.unshift(0, 0);
+                args = [applyOffset(offsetX, offsetY, points, 2)];
+                break;
+
             case 'q':
                 points.unshift(0, 0);
-                args = [applyOffset(offsetX, offsetY, points)];
+                args = [applyOffset(offsetX, offsetY, points, 4)];
                 break;
 
             case 'H':
@@ -144,20 +152,21 @@ function interpolatePath(path) {
                 break;
 
             case 'h':
-                points.unshift(0, 0);
-                points.push(0);
-                args = [applyOffset(offsetX, offsetY, points)];
+                applyOffset(offsetX, offsetX, points, 2); // offsetX, offsetX is intentional
+                points.unshift(offsetX, offsetY);
+                points.push(offsetY);
+                args = [points];
                 break;
 
             case 'm':
-                subPathStartX = offsetX;
-                subPathStartY = offsetY;
-                args = [applyOffset(offsetX, offsetY, points.slice(2))];
+                subPathStartX = points[0] + offsetX;
+                subPathStartY = points[1] + offsetY;
+                args = [applyOffset(offsetX, offsetY, points.slice(2), 2)];
                 break;
 
             case 'M':
-                subPathStartX = offsetX;
-                subPathStartY = offsetY;
+                subPathStartX = points[0];
+                subPathStartY = points[1];
                 args = [points.slice(2)];
                 break;
 
@@ -167,13 +176,15 @@ function interpolatePath(path) {
                 break;
 
             case 'v':
-                points.unshift(0, 0, 0);
-                args = [applyOffset(offsetX, offsetY, points)];
+                applyOffset(offsetY, offsetY, points, 2); // offsetY, offsetY is intentional
+                points.unshift(offsetX, offsetY, offsetX);
+                args = [points];
                 break;
 
             case 'z':
             case 'Z':
-                args = [[subPathStartX, subPathStartY]];
+                points = [offsetX, offsetY, subPathStartX, subPathStartY];
+                args = [points];
                 break;
         }
         const calculator = calculators[command.toLowerCase()];
@@ -185,14 +196,8 @@ function interpolatePath(path) {
             data.push(...pts);
             const len = ~~points.length;
 
-            if (command.toLowerCase() === command) {
-                offsetY += points[len - 1];
-                offsetX += points[len - 2];
-            }
-            else {
-                offsetY = points[len - 1];
-                offsetX = points[len - 2];
-            }
+            offsetY = points[len - 1];
+            offsetX = points[len - 2];
         }
         lastCommand = {command, points, offsets};
     }
@@ -229,11 +234,17 @@ function trimPathOffsets(paths) {
     }
 }
 
-function applyOffset(offsetX, offsetY, coords = []) {
-    return coords.map((value, index) => {
-        return value + (index % 2 ? offsetY : offsetX);
-    });
+function applyOffset(offsetX, offsetY, coords = [], setLength = 2) {
+    for (let i = 0; i < coords.length; i++) {
+        if (i && i % +setLength === 0) {
+            offsetX = coords[i - 2];
+            offsetY = coords[i - 1];
+        }
+        coords[i] += (i % 2 ? +offsetY : +offsetX);
+    }
+    return coords;
 }
+
 module.exports = class SVGPathInterpolator {
     /**
      * When trim is true, paths that were translated

@@ -52,14 +52,19 @@ const pathData = interpolator.processSvg(svgString);
 ```
 ### joinPathData
 When `joinPathData` is `true`, all path data is joined in a single array as the output. When `false`, each path is separated by the path `id` attribute in a json object as the output. If no `id` attribute exists on the path, a unique id is created.
+
 ### minDistance
 `minDistance` is the minimum distance between the current and previous points when sampling.  If a sample results in a distance less than the specified value, the point is discarded.
+
 ### roundToNearest
 `roundToNearest` is useful when snapping to fractional pixel values.  For example, if `roundToNearest` is `.25`, a sample resulting in the point 2.343200092,4.6100923 will round to 2.25,4.5
+
 ### sampleFrequency
  `sampleFrequency` determines the increment of `t` when sampling. If `sampleFrequency` is set to `.001` , since `t` iterates from 0 to 1, there will be 1000 points sampled per command but only points that are greater than `minDistance` are captured.
+
 ### pretty (cli only)
 When `true`, `pretty` creates formatted json output
+
 ### prettyIndent (cli only)
 Then number of spaces to indent when `pretty` is `true`
 
