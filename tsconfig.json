@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "baseUrl": "./src",
+    "allowSyntheticDefaultImports": false,
+    "allowUnreachableCode": false,
+    "declaration": true,
+    "lib": ["DOM", "ES2017"],
+    "moduleResolution": "Node",
+    "module": "ES2022",
+    "target": "ESNext",
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitThis": true,
+    "allowJs": true,
+    "inlineSourceMap": true,
+    "inlineSources": true,
+    "importsNotUsedAsValues": "error",
+    "importHelpers": true,
+    "outDir": "lib/"
+  },
+  "files": ["src/index.ts"],
+  "lib": [
+    "es2017",
+    "esnext",
+    "node"
+  ],
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "src/**/*.spec.ts"
+  ]
+}
