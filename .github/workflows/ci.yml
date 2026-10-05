@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  verify:
-    name: Verify on Node ${{ matrix.node }}
+  runtime:
+    name: Runtime on Node ${{ matrix.node }}
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -19,21 +19,77 @@ jobs:
         node: [22, 24, 26]
     steps:
       - name: Check out source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
       - name: Set up Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: ${{ matrix.node }}
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Build
-        run: npm run build
-      - name: Type check
-        run: npm run typecheck
-      - name: Test
+      - name: Run runtime tests
         run: npm test
-      - name: Verify published package
+
+  quality:
+    name: Quality and package verification
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run quality checks
+        run: npm run lint && npm run format:check && npm run typecheck && npm run test:coverage
+      - name: Verify packed package
         run: npm run verify:package
+
+  windows-smoke:
+    name: Windows smoke test
+    runs-on: windows-2025
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build and test
+        run: npm test
+      - name: Verify CLI and packed package
+        run: npm run verify:package
+
+  browser-smoke:
+    name: Browser smoke test
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build package
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run browser smoke test
+        run: npm run test:browser

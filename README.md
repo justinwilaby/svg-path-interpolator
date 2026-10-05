@@ -92,11 +92,25 @@ For a browser without a bundler, serve this package's `lib/` directory and the `
 - `roundToNearest`: Snap coordinates to this increment. Default: `0.25`.
 - `sampleFrequency`: Increment of the curve parameter `t` between samples. Default: `0.001`.
 - `trim`: Translate sampled coordinates so their minimum x and y values are zero. Default: `false`.
+- `maxSamples`: Optional maximum number of sampling attempts for a single `interpolatePath` or `processSVG` call. It is shared across every path and every internally decomposed arc in that operation. This limits attempted samples, including samples later discarded by `minDistance`.
+- `maxOutputPoints`: Optional maximum number of emitted x/y coordinate pairs for a single interpolation operation. It is shared across every path and decomposed arc after distance filtering and rounding.
 - `pretty` and `prettyIndent`: CLI JSON formatting options.
+
+Both budgets must be positive finite integers when supplied. Exceeding either budget throws a `RangeError` before the next sample or point is added; no partial result is returned. The same validation runs when interpolation begins, so mutating an option after construction cannot bypass a limit.
 
 ## Development
 
-All package source, including the CLI, lives in `src/` as TypeScript. Run `npm run build` to emit ESM and TypeScript declarations into the generated, Git-ignored `lib/` directory. `npm pack` and `npm publish` build it automatically through `prepack`. Run `npm test` to build and run the Node test suite, or `npm run check` to type-check, test, and verify the packed package from a fresh consumer project. GitHub Actions runs these checks on Node 22, 24, and 26 using Ubuntu hosted runners.
+Install dependencies with `npm ci`. All package source, including the CLI, lives in `src/` as TypeScript. Run `npm run build` to emit ESM and TypeScript declarations into the generated, Git-ignored `lib/` directory. `npm pack` and `npm publish` build it automatically through `prepack`.
+
+- `npm test` builds and runs the Node test suite.
+- `npm run test:coverage` runs the suite with Node's coverage report.
+- `npm run lint` checks maintained TypeScript, tests, examples, configuration, scripts, documentation, and CI files with Biome.
+- `npm run format:check` verifies the tooling, documentation, configuration, example, and CI formatting; use `npm run format` to apply it. Existing `src/` and `test/` formatting is intentionally preserved until its own dedicated migration.
+- `npm run verify:package` tests the packed tarball from a fresh consumer project, including its CLI and declarations.
+- `npm run test:browser` launches Chromium against the actual browser example. Install its local binary first with `npx playwright install chromium`.
+- `npm run check` runs linting, formatting, type checking, coverage, and packed-package verification.
+
+GitHub Actions retains runtime coverage on Node 22, 24, and 26, runs quality and package verification once on Ubuntu, and adds Windows plus real-browser smoke coverage.
 
 The package is ESM-only. Prefer imports from the package root; the existing subpath export remains available for compatibility. The SAX parser's WebAssembly binary remains supplied by `sax-wasm` and must be passed to `createInterpolator`, as shown above.
 

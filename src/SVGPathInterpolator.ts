@@ -1,20 +1,26 @@
 import { SaxEventType, SAXParser } from 'sax-wasm';
 import type { Tag } from 'sax-wasm';
 import { calculators } from './math/calculators.js';
+import type { SamplingBudget } from './math/calculators.js';
 import { SVGTransform } from './math/SVGTransform.js';
 
 const commandRegEx = /([mlcqzavhst])\s*([-+\d.eE,\s]*)/ig;
 const argumentsRegEx = /[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/g;
-const transformRegEx = /(matrix|translate|scale|rotate|skewX|skewY)\s*\(([^)]*)\)/g;
 const minimumSampleFrequency = 0.000001;
-type TransformMethod = 'matrix' | 'translate' | 'scale' | 'rotate' | 'skewX' | 'skewY';
+const numberRegEx = /[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/y;
+const transformNames = new Set(['matrix', 'translate', 'scale', 'rotate', 'skewX', 'skewY']);
+const pathArgumentCounts: Record<string, number> = {
+  M: 2, L: 2, H: 1, V: 1, C: 6, S: 4, Q: 4, T: 2, A: 7
+};
 export interface SVGInterpolatorConfig {
   joinPathData?: boolean,
   minDistance?: number,
   roundToNearest?: number,
   sampleFrequency?: number,
   trim?: boolean,
-  parser?: SAXParser
+  parser?: SAXParser,
+  maxSamples?: number,
+  maxOutputPoints?: number
 }
 
 export class SVGPathInterpolator {
@@ -66,6 +72,12 @@ export class SVGPathInterpolator {
    */
   sampleFrequency = 0.001;
 
+  /** Maximum sample attempts for one interpolation operation. */
+  maxSamples?: number;
+
+  /** Maximum emitted coordinate pairs for one interpolation operation. */
+  maxOutputPoints?: number;
+
   /**
    * When true, pretty creates formatted json output.
    *
@@ -115,6 +127,23 @@ export class SVGPathInterpolator {
       value => value >= minimumSampleFrequency && value <= 1,
       `between ${minimumSampleFrequency} and 1, inclusive`
     );
+    this.validateLimit('maxSamples', this.maxSamples);
+    this.validateLimit('maxOutputPoints', this.maxOutputPoints);
+  }
+
+  private validateLimit(name: 'maxSamples' | 'maxOutputPoints', value: number | undefined) {
+    if (value !== undefined && (!Number.isFinite(value) || !Number.isInteger(value) || value <= 0)) {
+      throw new RangeError(`${name} must be a finite positive integer`);
+    }
+  }
+
+  private createSamplingBudget(): SamplingBudget {
+    return {
+      maxSamples: this.maxSamples,
+      maxOutputPoints: this.maxOutputPoints,
+      samples: 0,
+      outputPoints: 0
+    };
   }
 
   private validateNumericOption(
@@ -141,6 +170,8 @@ export class SVGPathInterpolator {
     if (!this.parser) {
       throw new Error('A prepared SAX parser is required to process SVG');
     }
+    this.validateNumericOptions();
+    const budget = this.createSamplingBudget();
     const transformStack: SVGTransform[] = [];
     let interpolatedPaths = this.joinPathData ? []:{};
     let i = Date.now();
@@ -162,7 +193,7 @@ export class SVGPathInterpolator {
           if (!p) {
             return;
           }
-          const points = this.interpolatePath(p.value.value);
+          const points = this.interpolatePathWithBudget(p.value.value, budget);
           this.applyTransforms(cumulativeTransform, points);
           if (!this.joinPathData) {
             const id = node.attributes.find(attr => attr.name.value==='id')
@@ -184,20 +215,220 @@ export class SVGPathInterpolator {
 
   private parseTransform(rawTransform: string) {
     const svgTransform = new SVGTransform();
-    for (const transformMatch of rawTransform.matchAll(transformRegEx)) {
-      const [, type, rawArguments] = transformMatch;
-      const args = this.parseArguments(rawArguments);
+    let index = 0;
+    let count = 0;
+    while (index < rawTransform.length) {
+      index = this.skipSeparators(rawTransform, index);
+      if (index === rawTransform.length) {
+        break;
+      }
+      const nameMatch = /^[A-Za-z]+/.exec(rawTransform.slice(index));
+      if (!nameMatch || !transformNames.has(nameMatch[0])) {
+        throw new Error('Invalid SVG transform: unsupported transform function');
+      }
+      const type = nameMatch[0];
+      index += type.length;
+      index = this.skipWhitespace(rawTransform, index);
+      if (rawTransform[index] !== '(') {
+        throw new Error(`Invalid SVG transform: expected "(" after ${type}`);
+      }
+      const closingIndex = rawTransform.indexOf(')', index + 1);
+      if (closingIndex === -1) {
+        throw new Error(`Invalid SVG transform: missing closing ")" for ${type}`);
+      }
+      const args = this.parseStrictNumbers(rawTransform.slice(index + 1, closingIndex), `SVG transform ${type}`);
+      this.validateTransformArity(type, args.length);
       if (type === 'matrix') {
         svgTransform.multiply(new SVGTransform(args[0], args[1], args[2], args[3], args[4], args[5]));
-        continue;
+      } else if (type === 'translate') {
+        if (args.length === 1) {
+          args.push(0);
+        }
+        svgTransform.translate(args[0], args[1]);
+      } else if (type === 'scale') {
+        svgTransform.scale(args[0], args[1]);
+      } else if (type === 'rotate') {
+        svgTransform.rotate(args[0], args[1], args[2]);
+      } else if (type === 'skewX') {
+        svgTransform.skewX(args[0]);
+      } else {
+        svgTransform.skewY(args[0]);
       }
-      if (type === 'translate' && args.length === 1) {
-        args.push(0);
+      if (!this.isFiniteTransform(svgTransform)) {
+        throw new RangeError('Invalid SVG transform: matrix values must be finite');
       }
-      const method = svgTransform[type as TransformMethod] as (...values: number[]) => unknown;
-      method.call(svgTransform, ...args);
+      index = closingIndex + 1;
+      count++;
+    }
+    if (count === 0) {
+      throw new Error('Invalid SVG transform: expected at least one transform function');
     }
     return svgTransform;
+  }
+
+  private validateTransformArity(type: string, length: number) {
+    const valid = (type === 'matrix' && length === 6)
+      || ((type === 'translate' || type === 'scale') && (length === 1 || length === 2))
+      || (type === 'rotate' && (length === 1 || length === 3))
+      || ((type === 'skewX' || type === 'skewY') && length === 1);
+    if (!valid) {
+      throw new Error(`Invalid SVG transform: ${type} has an invalid argument count`);
+    }
+  }
+
+  private isFiniteTransform(transform: SVGTransform) {
+    const points = [transform.map(0, 0), transform.map(1, 0), transform.map(0, 1)];
+    return points.every(point => Number.isFinite(point.x) && Number.isFinite(point.y));
+  }
+
+  private skipWhitespace(source: string, index: number) {
+    while (index < source.length && /\s/.test(source[index])) {
+      index++;
+    }
+    return index;
+  }
+
+  private skipSeparators(source: string, index: number) {
+    while (index < source.length && (source[index] === ',' || /\s/.test(source[index]))) {
+      index++;
+    }
+    return index;
+  }
+
+  private parseStrictNumbers(source: string, context: string) {
+    const values: number[] = [];
+    let index = 0;
+    while (index < source.length) {
+      const separatorStart = index;
+      index = this.skipSeparators(source, index);
+      if (index === source.length) {
+        if (source.slice(separatorStart, index).includes(',')) {
+          throw new Error(`Invalid ${context}: trailing separator`);
+        }
+        break;
+      }
+      numberRegEx.lastIndex = index;
+      const match = numberRegEx.exec(source);
+      if (!match) {
+        throw new Error(`Invalid ${context}: malformed number`);
+      }
+      const value = Number(match[0]);
+      if (!Number.isFinite(value)) {
+        throw new RangeError(`Invalid ${context}: numbers must be finite`);
+      }
+      values.push(value);
+      index = numberRegEx.lastIndex;
+    }
+    return values;
+  }
+
+  private parseArcArguments(source: string) {
+    const values: number[] = [];
+    let index = 0;
+    while (index < source.length) {
+      const group: number[] = [];
+      for (let argument = 0; argument < 3; argument++) {
+        const parsed = this.readStrictNumber(source, index, 'SVG path data');
+        group.push(parsed.value);
+        index = parsed.index;
+      }
+      for (let flag = 0; flag < 2; flag++) {
+        index = this.skipSeparators(source, index);
+        if (source[index] !== '0' && source[index] !== '1') {
+          throw new Error('Invalid SVG path data: arc flags must be 0 or 1');
+        }
+        group.push(Number(source[index++]));
+      }
+      for (let argument = 0; argument < 2; argument++) {
+        const parsed = this.readStrictNumber(source, index, 'SVG path data');
+        group.push(parsed.value);
+        index = parsed.index;
+      }
+      values.push(...group);
+      const separatorStart = index;
+      index = this.skipSeparators(source, index);
+      if (index === source.length && source.slice(separatorStart, index).includes(',')) {
+        throw new Error('Invalid SVG path data: trailing separator');
+      }
+    }
+    return values;
+  }
+
+  private readStrictNumber(source: string, index: number, context: string) {
+    index = this.skipSeparators(source, index);
+    numberRegEx.lastIndex = index;
+    const match = numberRegEx.exec(source);
+    if (!match) {
+      throw new Error(`Invalid ${context}: malformed number`);
+    }
+    const value = Number(match[0]);
+    if (!Number.isFinite(value)) {
+      throw new RangeError(`Invalid ${context}: numbers must be finite`);
+    }
+    return { value, index: numberRegEx.lastIndex };
+  }
+
+  private validatePath(path: string) {
+    let index = 0;
+    let command: string | undefined;
+    let firstCommand = true;
+    while (index < path.length) {
+      index = this.skipSeparators(path, index);
+      if (index === path.length) {
+        break;
+      }
+      const token = path[index];
+      if (!/[A-Za-z]/.test(token)) {
+        throw new Error('Invalid SVG path data: expected a command');
+      }
+      if (!'MmLlHhVvCcSsQqTtAaZz'.includes(token)) {
+        throw new Error(`Invalid SVG path data: unsupported command ${token}`);
+      }
+      command = token;
+      index++;
+      if (firstCommand && command.toLowerCase() !== 'm') {
+        throw new Error('Invalid SVG path data: the first command must be moveto');
+      }
+      firstCommand = false;
+      const start = index;
+      while (index < path.length) {
+        const beforeSeparator = index;
+        index = this.skipSeparators(path, index);
+        if (index === path.length || /[A-Za-z]/.test(path[index])) {
+          if (index === path.length && index !== beforeSeparator && path.slice(beforeSeparator, index).includes(',')) {
+            throw new Error('Invalid SVG path data: trailing separator');
+          }
+          break;
+        }
+        numberRegEx.lastIndex = index;
+        const match = numberRegEx.exec(path);
+        if (!match) {
+          throw new Error('Invalid SVG path data: malformed number');
+        }
+        const value = Number(match[0]);
+        if (!Number.isFinite(value)) {
+          throw new RangeError('Invalid SVG path data: numbers must be finite');
+        }
+        index = numberRegEx.lastIndex;
+      }
+      const rawArguments = path.slice(start, index);
+      const values = command.toLowerCase() === 'a'
+        ? this.parseArcArguments(rawArguments)
+        : this.parseStrictNumbers(rawArguments, 'SVG path data');
+      if (command.toLowerCase() === 'z') {
+        if (values.length) {
+          throw new Error('Invalid SVG path data: closepath cannot have arguments');
+        }
+        continue;
+      }
+      const argumentCount = pathArgumentCounts[command.toUpperCase()];
+      if (!values.length || values.length % argumentCount !== 0) {
+        throw new Error(`Invalid SVG path data: ${command} has an incomplete argument group`);
+      }
+    }
+    if (firstCommand) {
+      throw new Error('Invalid SVG path data: expected a moveto command');
+    }
   }
 
   applyTransforms(transforms: Record<string, string>, points: number[]): void;
@@ -222,6 +453,15 @@ export class SVGPathInterpolator {
 
   interpolatePath(path: string): number[] {
     this.validateNumericOptions();
+    return this.interpolatePathWithBudget(path, this.createSamplingBudget());
+  }
+
+  private interpolatePathWithBudget(path: string, budget: SamplingBudget): number[] {
+    if (path.trim() === '' || path.trim().toLowerCase() === 'none') {
+      return [];
+    }
+    this.validatePath(path);
+    commandRegEx.lastIndex = 0;
     const data = [];
     let subPathStartX = 0;
     let subPathStartY = 0;
@@ -233,7 +473,9 @@ export class SVGPathInterpolator {
     let lastQuadraticControlY = 0;
     while (match = commandRegEx.exec(path)) {
       const [, command, rawArguments] = match;
-      let points = this.parseArguments(rawArguments);
+      let points = command.toLowerCase() === 'a'
+        ? this.parseArcArguments(rawArguments)
+        : this.parseArguments(rawArguments);
       let args: [number[]] | undefined;
 
       switch (command) {
@@ -273,7 +515,7 @@ export class SVGPathInterpolator {
             const endY = command === 't' ? offsetY + points[i + 1] : points[i + 1];
             data.push(...calculators.q(
               [offsetX, offsetY, controlX, controlY, endX, endY],
-              this.minDistance, this.roundToNearest, this.sampleFrequency
+              this.minDistance, this.roundToNearest, this.sampleFrequency, budget
             ));
             offsetX = endX;
             offsetY = endY;
@@ -349,7 +591,7 @@ export class SVGPathInterpolator {
       const calculator = calculators[command.toLowerCase() as keyof typeof calculators];
       const offsets = { offsetX, offsetY };
       if (calculator && args) {
-        const pts = calculator(args[0], this.minDistance, this.roundToNearest, this.sampleFrequency);
+        const pts = calculator(args[0], this.minDistance, this.roundToNearest, this.sampleFrequency, budget);
         data.push(...pts);
         const len = ~~points.length;
 

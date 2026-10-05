@@ -1,0 +1,63 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+  "files": {
+    "includes": [
+      "src/**/*.ts",
+      "test/**/*.mjs",
+      "examples/**/*.js",
+      "examples/**/*.html",
+      "config/**/*.json",
+      "scripts/**/*.mjs",
+      "*.json",
+      "*.md",
+      ".github/**/*.yml",
+      ".github/**/*.yaml",
+      "!!lib",
+      "!!node_modules"
+    ],
+    "ignoreUnknown": true
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100,
+    "includes": [
+      "examples/**/*.js",
+      "examples/**/*.html",
+      "config/**/*.json",
+      "scripts/**/*.mjs",
+      "*.json",
+      "*.md",
+      ".github/**/*.yml",
+      ".github/**/*.yaml"
+    ]
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "correctness": {
+        "noSwitchDeclarations": "off"
+      },
+      "style": {
+        "useConst": "off",
+        "useExponentiationOperator": "off",
+        "useImportType": "off"
+      },
+      "suspicious": {
+        "noAssignInExpressions": "off",
+        "noGlobalIsFinite": "off",
+        "noImplicitAnyLet": "off"
+      }
+    }
+  },
+  "assist": {
+    "enabled": false
+  }
+}

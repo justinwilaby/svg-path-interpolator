@@ -7,7 +7,7 @@ export function animatePaths(paths) {
   const canvas = document.querySelectorAll('canvas');
   const rangeX = document.querySelector('#scaleX');
   const rangeY = document.querySelector('#scaleY');
-  const fills = [ '#459641', '#1C6C87' ];
+  const fills = ['#459641', '#1C6C87'];
   let i = len;
   let ctx = canvas[0].getContext('2d');
 
@@ -45,8 +45,8 @@ export function animatePaths(paths) {
     }
     let x = currentPath[j] + translate;
     let y = currentPath[j + 1] + translate;
-    x = x + (x * (x / maxX) * scaleXFactor);
-    y = y + (y * (y / maxY) * scaleYFactor);
+    x = x + x * (x / maxX) * scaleXFactor;
+    y = y + y * (y / maxY) * scaleYFactor;
     ctx.beginPath();
     ctx.arc(x, y, 1, 0, Math.PI * 2);
     ctx.fill();

@@ -6,6 +6,33 @@ export type Point = {
   y: number;
 }
 
+export interface SamplingBudget {
+  maxSamples?: number;
+  maxOutputPoints?: number;
+  samples: number;
+  outputPoints: number;
+}
+
+export function consumeSample(budget?: SamplingBudget) {
+  if (!budget) {
+    return;
+  }
+  if (budget.maxSamples !== undefined && budget.samples >= budget.maxSamples) {
+    throw new RangeError(`maxSamples of ${budget.maxSamples} would be exceeded`);
+  }
+  budget.samples++;
+}
+
+function addPoint(points: number[], x: number, y: number, roundToNearest: number, budget?: SamplingBudget) {
+  if (budget?.maxOutputPoints !== undefined && budget.outputPoints >= budget.maxOutputPoints) {
+    throw new RangeError(`maxOutputPoints of ${budget.maxOutputPoints} would be exceeded`);
+  }
+  points.push(x - (x % roundToNearest), y - (y % roundToNearest));
+  if (budget) {
+    budget.outputPoints++;
+  }
+}
+
 // Calculators
 // https://pomax.github.io/bezierinfo/
 function calculateLinear(t: number, p1: number, p2: number): number {
@@ -25,8 +52,8 @@ function calculatePointCubic(t: number, p1: number, p2: number, p3: number, p4: 
   return p1 * Math.pow(oneMinusT, 3) + p2 * 3 * (oneMinusT * oneMinusT) * t + p3 * 3 * oneMinusT * t2 + p4 * t3;
 }
 
-function calculateCoordinatesLinear(points: number[], minDistance: number, roundToNearest: number, sampleFrequency: number): number[] {
-  const pts = [];
+function calculateCoordinatesLinear(points: number[], minDistance: number, roundToNearest: number, sampleFrequency: number, budget?: SamplingBudget): number[] {
+  const pts: number[] = [];
   let [ startX, startY ] = points.splice(0, 2);
 
   for (let i = 0; i < points.length; i += 2) {
@@ -36,6 +63,7 @@ function calculateCoordinatesLinear(points: number[], minDistance: number, round
     let lastX = startX;
     let lastY = startY;
     while (t <= 1.0000000000000007) {
+      consumeSample(budget);
       const x = calculateLinear(t, startX, endX);
       const y = calculateLinear(t, startY, endY);
 
@@ -43,7 +71,7 @@ function calculateCoordinatesLinear(points: number[], minDistance: number, round
       const deltaY = y - lastY;
       const dist = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
       if (Math.abs(dist) > minDistance) {
-        pts.push(x - (x % roundToNearest), y - (y % roundToNearest));
+        addPoint(pts, x, y, roundToNearest, budget);
         lastX = x;
         lastY = y;
       }
@@ -55,8 +83,8 @@ function calculateCoordinatesLinear(points: number[], minDistance: number, round
   return pts;
 }
 
-function calculateCoordinatesQuad(points: number[], minDistance: number, roundToNearest: number, sampleFrequency: number): number[] {
-  const pts = [];
+function calculateCoordinatesQuad(points: number[], minDistance: number, roundToNearest: number, sampleFrequency: number, budget?: SamplingBudget): number[] {
+  const pts: number[] = [];
   let [ startX, startY ] = points.splice(0, 2);
 
   for (let i = 0; i < points.length; i += 4) {
@@ -69,6 +97,7 @@ function calculateCoordinatesQuad(points: number[], minDistance: number, roundTo
     let lastX = startX;
     let lastY = startY;
     while (t <= 1.0000000000000007) {
+      consumeSample(budget);
       const x = calculatePointQuadratic(t, startX, ctrl1x, endX);
       const y = calculatePointQuadratic(t, startY, ctrl1y, endY);
 
@@ -76,7 +105,7 @@ function calculateCoordinatesQuad(points: number[], minDistance: number, roundTo
       const deltaY = y - lastY;
       const dist = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
       if (Math.abs(dist) > minDistance) {
-        pts.push(x - (x % roundToNearest), y - (y % roundToNearest));
+        addPoint(pts, x, y, roundToNearest, budget);
         lastX = x;
         lastY = y;
       }
@@ -89,8 +118,8 @@ function calculateCoordinatesQuad(points: number[], minDistance: number, roundTo
   return pts;
 }
 
-function calculateCoordinatesCubic(points: number[], minDistance: number, roundToNearest: number, sampleFrequency: number): number[] {
-  const pts = [];
+function calculateCoordinatesCubic(points: number[], minDistance: number, roundToNearest: number, sampleFrequency: number, budget?: SamplingBudget): number[] {
+  const pts: number[] = [];
   let [ startX, startY ] = points.splice(0, 2);
 
   for (let i = 0; i < points.length; i += 6) {
@@ -104,6 +133,7 @@ function calculateCoordinatesCubic(points: number[], minDistance: number, roundT
     let lastX = startX;
     let lastY = startY;
     while (t <= 1.0000000000000007) {
+      consumeSample(budget);
       const x = calculatePointCubic(t, startX, ctrl1x, ctrl2x, endX);
       const y = calculatePointCubic(t, startY, ctrl1y, ctrl2y, endY);
 
@@ -111,7 +141,7 @@ function calculateCoordinatesCubic(points: number[], minDistance: number, roundT
       const deltaY = y - lastY;
       const dist = Math.sqrt((deltaX * deltaX) + (deltaY * deltaY));
       if (Math.abs(dist) > minDistance) {
-        pts.push(x - (x % roundToNearest), y - (y % roundToNearest));
+        addPoint(pts, x, y, roundToNearest, budget);
         lastX = x;
         lastY = y;
       }
@@ -124,8 +154,8 @@ function calculateCoordinatesCubic(points: number[], minDistance: number, roundT
   return pts;
 }
 
-function calculateCoordinatesSmoothCubic(points: number[], minDistance: number, roundToNearest: number, sampleFrequency: number): number[] {
-  const pts = [];
+function calculateCoordinatesSmoothCubic(points: number[], minDistance: number, roundToNearest: number, sampleFrequency: number, budget?: SamplingBudget): number[] {
+  const pts: number[] = [];
   let [ startX, startY, previousCtrl2x, previousCtrl2y ] = points.splice(0, 4);
 
   for (let i = 0; i < points.length; i += 4) {
@@ -141,7 +171,7 @@ function calculateCoordinatesSmoothCubic(points: number[], minDistance: number, 
     let svgTransform = new SVGTransform(1, 0, 0, 1, previousCtrl2x - startX, previousCtrl2y - startY).inverse();
     let { x: ctrl1x, y: ctrl1y } = svgTransform.map(startX, startY);
 
-    const interpolatedPts = calculateCoordinatesCubic([ startX, startY, ctrl1x, ctrl1y, ctrl2x, ctrl2y, endX, endY ], minDistance, roundToNearest, sampleFrequency);
+    const interpolatedPts = calculateCoordinatesCubic([ startX, startY, ctrl1x, ctrl1y, ctrl2x, ctrl2y, endX, endY ], minDistance, roundToNearest, sampleFrequency, budget);
     pts.push(...interpolatedPts);
 
     startX = endX;
@@ -152,8 +182,8 @@ function calculateCoordinatesSmoothCubic(points: number[], minDistance: number, 
   return pts;
 }
 
-function calculateCoordinatesArc(points: number[], minDistance: number, roundToNearest: number, sampleFrequency: number): number[] {
-  const pts = [];
+function calculateCoordinatesArc(points: number[], minDistance: number, roundToNearest: number, sampleFrequency: number, budget?: SamplingBudget): number[] {
+  const pts: number[] = [];
   let [ startX, startY ] = points.splice(0, 2);
 
   for (let i = 0; i < points.length; i += 7) {
@@ -172,7 +202,9 @@ function calculateCoordinatesArc(points: number[], minDistance: number, roundToN
     // If rx = 0 or ry = 0 then this arc is treated as a straight
     // line segment (a "lineto") joining the endpoints.
     if (rx===0 || ry===0) {
-      pts.push(...calculateCoordinatesLinear([ startX, startY, endX, endY ], minDistance, roundToNearest, sampleFrequency));
+      pts.push(...calculateCoordinatesLinear([ startX, startY, endX, endY ], minDistance, roundToNearest, sampleFrequency, budget));
+      startX = endX;
+      startY = endY;
       continue;
     }
     // If rx or ry have negative signs, these are dropped;
@@ -191,7 +223,7 @@ function calculateCoordinatesArc(points: number[], minDistance: number, roundToN
       const ctrlPt2 = beziers[i + 1];
       const endPoint = beziers[i + 2];
       const points = [ startX, startY, ctrlPt1.x, ctrlPt1.y, ctrlPt2.x, ctrlPt2.y, endPoint.x, endPoint.y ];
-      const interpolatedPoints = calculateCoordinatesCubic(points, minDistance, roundToNearest, sampleFrequency);
+      const interpolatedPoints = calculateCoordinatesCubic(points, minDistance, roundToNearest, sampleFrequency, budget);
       pts.push(...interpolatedPoints);
 
       startX = endPoint.x;
