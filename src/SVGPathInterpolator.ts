@@ -5,7 +5,8 @@ import { SVGTransform } from './math/SVGTransform.js';
 
 const commandRegEx = /([mlcqzavhst])\s*([-+\d.eE,\s]*)/ig;
 const argumentsRegEx = /[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/g;
-const transformRegEx = /(matrix|translate|scale|rotate|skewX|skewY)(?:\()(.*)(?:\))/;
+const transformRegEx = /(matrix|translate|scale|rotate|skewX|skewY)\s*\(([^)]*)\)/g;
+const minimumSampleFrequency = 0.000001;
 type TransformMethod = 'matrix' | 'translate' | 'scale' | 'rotate' | 'skewX' | 'skewY';
 export interface SVGInterpolatorConfig {
   joinPathData?: boolean,
@@ -53,6 +54,8 @@ export class SVGPathInterpolator {
 
   /**
    * sampleFrequency determines the increment of t when sampling.
+   * Values must be between 0.000001 and 1, inclusive, to bound
+   * the amount of sampling work performed for each command.
    * If sampleFrequency is set to .001 , since t iterates from
    * 0 to 1, there will be 1000 points sampled per command
    * but only points that are greater than minDistance are captured.
@@ -100,6 +103,29 @@ export class SVGPathInterpolator {
 
   constructor(config: SVGInterpolatorConfig = {}) {
     Object.assign(this, config);
+    this.validateNumericOptions();
+  }
+
+  private validateNumericOptions() {
+    this.validateNumericOption('minDistance', this.minDistance, value => value >= 0, 'greater than or equal to 0');
+    this.validateNumericOption('roundToNearest', this.roundToNearest, value => value > 0, 'greater than 0');
+    this.validateNumericOption(
+      'sampleFrequency',
+      this.sampleFrequency,
+      value => value >= minimumSampleFrequency && value <= 1,
+      `between ${minimumSampleFrequency} and 1, inclusive`
+    );
+  }
+
+  private validateNumericOption(
+    name: 'minDistance' | 'roundToNearest' | 'sampleFrequency',
+    value: number,
+    isValid: (value: number) => boolean,
+    requirement: string
+  ) {
+    if (!Number.isFinite(value) || !isValid(value)) {
+      throw new RangeError(`${name} must be a finite number ${requirement}`);
+    }
   }
 
   parseArguments(source: string): number[] {
@@ -115,21 +141,21 @@ export class SVGPathInterpolator {
     if (!this.parser) {
       throw new Error('A prepared SAX parser is required to process SVG');
     }
-    const openTagsDepth: Record<string, number> = {};
-    const transforms: Record<string, string> = {};
+    const transformStack: SVGTransform[] = [];
     let interpolatedPaths = this.joinPathData ? []:{};
     let i = Date.now();
     this.parser.eventHandler = (event, detail) => {
       const node = detail as Tag;
       if (event===SaxEventType.OpenTag) {
-        if (!openTagsDepth[node.name]) {
-          openTagsDepth[node.name] = 0;
-        }
-        const depth = openTagsDepth[node.name]++;
-        const transform = node.attributes.find(attr => attr.name.value==='transform')
+        const inheritedTransform = transformStack[transformStack.length - 1];
+        const cumulativeTransform = inheritedTransform
+          ? new SVGTransform().multiply(inheritedTransform)
+          : new SVGTransform();
+        const transform = node.attributes.find(attr => attr.name.value==='transform');
         if (transform) {
-          transforms[depth + node.name] = transform.value.value;
+          cumulativeTransform.multiply(this.parseTransform(transform.value.value));
         }
+        transformStack.push(cumulativeTransform);
 
         if (node.name==='path') {
           const p = node.attributes.find(attr => attr.name.value==='d')
@@ -137,7 +163,7 @@ export class SVGPathInterpolator {
             return;
           }
           const points = this.interpolatePath(p.value.value);
-          this.applyTransforms(transforms, points);
+          this.applyTransforms(cumulativeTransform, points);
           if (!this.joinPathData) {
             const id = node.attributes.find(attr => attr.name.value==='id')
             const key = id ? id.value.value:`path_${ i++ }`;
@@ -147,8 +173,7 @@ export class SVGPathInterpolator {
           }
         }
       } else {
-        const depth = --openTagsDepth[node.name];
-        delete transforms[depth + node.name];
+        transformStack.pop();
       }
     };
 
@@ -157,36 +182,46 @@ export class SVGPathInterpolator {
     return interpolatedPaths;
   }
 
-  applyTransforms(transforms: Record<string, string>, points: number[]) {
-    const keys = Object.keys(transforms);
-    if (!keys.length) {
-      return;
-    }
-    if (keys.length < 1) {
-      keys.sort().reverse();
-    }
-    keys.forEach(depth => {
-      const svgTransform = new SVGTransform();
-      const rawTransform = transforms[depth];
-      const transformMatch = transformRegEx.exec(rawTransform);
-      if (!transformMatch) {
-        return;
-      }
+  private parseTransform(rawTransform: string) {
+    const svgTransform = new SVGTransform();
+    for (const transformMatch of rawTransform.matchAll(transformRegEx)) {
       const [, type, rawArguments] = transformMatch;
       const args = this.parseArguments(rawArguments);
+      if (type === 'matrix') {
+        svgTransform.multiply(new SVGTransform(args[0], args[1], args[2], args[3], args[4], args[5]));
+        continue;
+      }
+      if (type === 'translate' && args.length === 1) {
+        args.push(0);
+      }
       const method = svgTransform[type as TransformMethod] as (...values: number[]) => unknown;
       method.call(svgTransform, ...args);
+    }
+    return svgTransform;
+  }
 
-      const len = points.length;
-      for (let i = 0; i < len; i += 2) {
-        const { x, y } = svgTransform.map(points[i], points[i + 1]);
-        points[i] = x - (x % this.roundToNearest);
-        points[i + 1] = y - (y % this.roundToNearest);
-      }
-    });
+  applyTransforms(transforms: Record<string, string>, points: number[]): void;
+  applyTransforms(transform: SVGTransform, points: number[]): void;
+  applyTransforms(transformOrTransforms: SVGTransform | Record<string, string>, points: number[]) {
+    const transform = transformOrTransforms instanceof SVGTransform
+      ? transformOrTransforms
+      : Object.values(transformOrTransforms).reduce(
+        (combined, rawTransform) => combined.multiply(this.parseTransform(rawTransform)),
+        new SVGTransform()
+      );
+    if (transform.isIdentity()) {
+      return;
+    }
+    const len = points.length;
+    for (let i = 0; i < len; i += 2) {
+      const { x, y } = transform.map(points[i], points[i + 1]);
+      points[i] = x - (x % this.roundToNearest);
+      points[i + 1] = y - (y % this.roundToNearest);
+    }
   }
 
   interpolatePath(path: string): number[] {
+    this.validateNumericOptions();
     const data = [];
     let subPathStartX = 0;
     let subPathStartY = 0;

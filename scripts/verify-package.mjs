@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -27,6 +28,7 @@ try {
   ]));
   const packagedFiles = new Set(packageInfo.files.map(({ path }) => path));
   for (const path of [
+    'THIRD_PARTY_NOTICES.md',
     'lib/cli.js',
     'lib/cli.d.ts',
     'lib/index.js',
@@ -49,9 +51,10 @@ try {
     join(temporaryDirectory, packageInfo.filename),
   ], consumer);
 
+  const consumerRequire = createRequire(join(consumer, 'package.json'));
   const packageRoot = join(consumer, 'node_modules', 'svg-path-interpolator');
   const { createInterpolator, SVGPathInterpolator } = await import(
-    pathToFileURL(join(packageRoot, 'lib', 'index.js')).href
+    pathToFileURL(consumerRequire.resolve('svg-path-interpolator')).href
   );
   assert.equal(typeof SVGPathInterpolator, 'function');
   const wasm = await readFile(join(consumer, 'node_modules', 'sax-wasm', 'lib', 'sax-wasm.wasm'));

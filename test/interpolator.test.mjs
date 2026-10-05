@@ -15,6 +15,16 @@ function interpolate(path, options = {}) {
   return new SVGPathInterpolator({ ...settings, ...options }).interpolatePath(path);
 }
 
+async function processSVG(source, options = {}) {
+  const require = createRequire(import.meta.url);
+  const wasm = await readFile(require.resolve('sax-wasm/lib/sax-wasm.wasm'));
+  const interpolator = await createInterpolator(
+    { ...settings, joinPathData: false, ...options },
+    new Uint8Array(wasm)
+  );
+  return interpolator.processSVG(new TextEncoder().encode(source));
+}
+
 test('samples absolute, relative, horizontal, and vertical lines', () => {
   assert.deepEqual(interpolate('M0 0 L10 0'), [5, 0, 10, 0]);
   assert.deepEqual(interpolate('M5 5 l10 0'), [10, 5, 15, 5]);
@@ -41,11 +51,105 @@ test('trims both coordinate axes to zero', () => {
 });
 
 test('parses SVG paths and applies an ancestor transform', async () => {
-  const require = createRequire(import.meta.url);
-  const wasm = await readFile(require.resolve('sax-wasm/lib/sax-wasm.wasm'));
-  const interpolator = await createInterpolator({ ...settings, joinPathData: false }, new Uint8Array(wasm));
-  const svg = new TextEncoder().encode('<svg><g transform="translate(10 20)"><path id="line" d="M0 0 L10 0"/></g></svg>');
-  assert.deepEqual(interpolator.processSVG(svg), { line: [15, 20, 20, 20] });
+  assert.deepEqual(
+    await processSVG('<svg><g transform="translate(10 20)"><path id="line" d="M0 0 L10 0"/></g></svg>'),
+    { line: [15, 20, 20, 20] }
+  );
+});
+
+test('composes every operation in an SVG transform list in SVG order', async () => {
+  assert.deepEqual(
+    await processSVG('<svg><path id="line" transform="translate(10 0) scale(2)" d="M0 0 L10 0"/></svg>'),
+    { line: [20, 0, 30, 0] }
+  );
+});
+
+test('defaults a single-argument translation y value to zero', async () => {
+  assert.deepEqual(
+    await processSVG('<svg><path id="line" transform="translate(10)" d="M0 5 L10 5"/></svg>'),
+    { line: [15, 5, 20, 5] }
+  );
+});
+
+test('composes matrix operations with earlier transforms in a list', async () => {
+  assert.deepEqual(
+    await processSVG('<svg><path id="line" transform="translate(10 0) matrix(2 0 0 1 0 0)" d="M0 0 L10 0"/></svg>'),
+    { line: [20, 0, 30, 0] }
+  );
+});
+
+test('composes nested parent and child transforms', async () => {
+  assert.deepEqual(
+    await processSVG('<svg><g transform="translate(10 0)"><g transform="scale(2)"><path id="line" d="M0 0 L10 0"/></g></g></svg>'),
+    { line: [20, 0, 30, 0] }
+  );
+});
+
+test('applies transforms declared directly on a path', async () => {
+  assert.deepEqual(
+    await processSVG('<svg><path id="line" transform="translate(5 10)" d="M0 0 L10 0"/></svg>'),
+    { line: [10, 10, 15, 10] }
+  );
+});
+
+test('supports rotation centers, matrices, and skew transforms', async () => {
+  const result = await processSVG(`
+    <svg>
+      <path id="rotated" transform="rotate(90 10 0)" d="M10 0 L20 0"/>
+      <path id="matrix" transform="matrix(2 0 0 3 4 5)" d="M0 0 L10 0"/>
+      <path id="skewed" transform="skewX(45)" d="M0 10 L10 10"/>
+    </svg>
+  `, { roundToNearest: 0.000001 });
+
+  assert.deepEqual(result.rotated, [10, 5, 10, 10]);
+  assert.deepEqual(result.matrix, [14, 5, 24, 5]);
+  assert.ok(Math.abs(result.skewed[0] - 15) < 0.00001);
+  assert.ok(Math.abs(result.skewed[2] - 20) < 0.00001);
+  assert.deepEqual([result.skewed[1], result.skewed[3]], [10, 10]);
+});
+
+test('rejects invalid numeric interpolation options at construction', () => {
+  for (const value of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.throws(
+      () => new SVGPathInterpolator({ minDistance: value }),
+      { name: 'RangeError', message: /minDistance must be a finite number greater than or equal to 0/ }
+    );
+  }
+  for (const value of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.throws(
+      () => new SVGPathInterpolator({ roundToNearest: value }),
+      { name: 'RangeError', message: /roundToNearest must be a finite number greater than 0/ }
+    );
+  }
+  for (const value of [0, -1, 0.0000009, 1.000001, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.throws(
+      () => new SVGPathInterpolator({ sampleFrequency: value }),
+      { name: 'RangeError', message: /sampleFrequency must be a finite number between 0\.000001 and 1, inclusive/ }
+    );
+  }
+
+  assert.doesNotThrow(() => new SVGPathInterpolator({
+    minDistance: 0,
+    roundToNearest: Number.MIN_VALUE,
+    sampleFrequency: 0.000001
+  }));
+});
+
+test('rejects numeric options mutated after construction before sampling', () => {
+  const invalidOptions = [
+    ['minDistance', -1, /minDistance must be a finite number greater than or equal to 0/],
+    ['roundToNearest', 0, /roundToNearest must be a finite number greater than 0/],
+    ['sampleFrequency', 0.0000009, /sampleFrequency must be a finite number between 0\.000001 and 1, inclusive/]
+  ];
+
+  for (const [name, value, expectedMessage] of invalidOptions) {
+    const interpolator = new SVGPathInterpolator(settings);
+    interpolator[name] = value;
+    assert.throws(
+      () => interpolator.interpolatePath('M0 0 L10 0'),
+      { name: 'RangeError', message: expectedMessage }
+    );
+  }
 });
 
 test('loads the SAX WASM from a browser-style URL', async () => {
