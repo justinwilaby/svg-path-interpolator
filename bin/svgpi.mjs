@@ -4,8 +4,7 @@
 import fs from 'fs/promises';
 import { createRequire } from 'module';
 import path from 'path';
-import { SaxEventType, SAXParser } from 'sax-wasm';
-import { SVGPathInterpolator } from '../lib/SVGPathInterpolator.js';
+import { createInterpolator } from '../lib/index.js';
 
 const require = createRequire(import.meta.url);
 const [ , ,configPath, svgFile, outputFile ] = process.argv;
@@ -24,10 +23,8 @@ async function runJob(configJson) {
   const file = path.normalize(svgFile);
   const svg = await read(file);
   const wasm = await read(require.resolve('sax-wasm/lib/sax-wasm.wasm'));
-  const parser = new SAXParser(SaxEventType.OpenTag | SaxEventType.CloseTag, { highWaterMark: 64 * 1024 });
-  await parser.prepareWasm(new Uint8Array(wasm));
-
-  const json = new SVGPathInterpolator({ ...config, parser }).processSVG(new Uint8Array(svg));
+  const interpolator = await createInterpolator(config, new Uint8Array(wasm));
+  const json = interpolator.processSVG(new Uint8Array(svg));
   const jsonStr = JSON.stringify(json, null, (config.pretty ? config.prettyIndent:0));
   if (outputFile) {
     try {

@@ -46,7 +46,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 import { degToRads, radToDeg } from './utils.js';
-import type { Point } from './calculators';
+import type { Point } from './calculators.js';
 
 export class SVGTransform {
 

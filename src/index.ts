@@ -1,21 +1,29 @@
 import { SaxEventType, SAXParser } from 'sax-wasm';
-import { SVGInterpolatorConfig, SVGPathInterpolator } from './SVGPathInterpolator';
+import { SVGPathInterpolator } from './SVGPathInterpolator.js';
+import type { SVGInterpolatorConfig } from './SVGPathInterpolator.js';
 
-async function getParser(saxWasmPath) {
-  const wasmResponse = await fetch(saxWasmPath);
-  if (!wasmResponse.ok){
-    throw new Error(`Cannot load the parser at ${saxWasmPath}`);
-  }
-  const parser = new SAXParser(SaxEventType.OpenTag | SaxEventType.CloseTag, { highWaterMark: 64 * 1024 });
+export { SVGPathInterpolator } from './SVGPathInterpolator.js';
+export type { SVGInterpolatorConfig } from './SVGPathInterpolator.js';
 
-  // Instantiate and prepare the wasm for parsing
-  const ready = await parser.prepareWasm(new Uint8Array(await wasmResponse.arrayBuffer()));
-  if (ready) {
-    return parser;
+export type SaxWasmSource = string | URL | Uint8Array | Response;
+
+async function getParser(saxWasmSource: SaxWasmSource) {
+  const parser = new SAXParser(SaxEventType.OpenTag | SaxEventType.CloseTag);
+
+  const response = typeof saxWasmSource === 'string' || saxWasmSource instanceof URL
+    ? await fetch(saxWasmSource)
+    : saxWasmSource;
+  if (response instanceof Response && !response.ok) {
+    throw new Error('Cannot load the SAX parser WASM');
   }
+  const ready = await parser.prepareWasm(response);
+  if (!ready) {
+    throw new Error('Could not initialize the SAX parser');
+  }
+  return parser;
 }
 
-export async function createInterpolator(config: SVGInterpolatorConfig, saxWasmPath = './sax-wasm.wasm') {
-  const parser = await getParser(saxWasmPath);
+export async function createInterpolator(config: Omit<SVGInterpolatorConfig, 'parser'>, saxWasmSource: SaxWasmSource) {
+  const parser = await getParser(saxWasmSource);
   return new SVGPathInterpolator({ ...config, parser });
 }

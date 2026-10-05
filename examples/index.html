@@ -12,6 +12,9 @@
 <input style="margin-left:20px;" type="range" max="1" min="-1" step=".001" value="0" id="scaleY">
 <canvas style="position: absolute; top: 40px; left:10px;" width="1280" height="900"></canvas>
 <canvas style="position: absolute; top: 40px; left:10px;" width="1280" height="900"></canvas>
+<script type="importmap">
+  {"imports": {"sax-wasm": "../node_modules/sax-wasm/lib/esm/index.js"}}
+</script>
 <script type="module" defer>
   import { createInterpolator } from '../lib/index.js' ;
 
@@ -20,7 +23,7 @@
     minDistance: 0.5,
     roundToNearest: 0.25,
     sampleFrequency: 0.001,
-  },'../lib/sax-wasm/lib/sax-wasm.wasm');
+  },'../node_modules/sax-wasm/lib/sax-wasm.wasm');
   const swirlsSvgResponse = await fetch('./vortex.svg');
   const bytes = new Uint8Array(await swirlsSvgResponse.arrayBuffer());
   const paths = interpolator.processSVG(bytes);
