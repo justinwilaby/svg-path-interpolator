@@ -5,7 +5,6 @@
     <title>SVGPathInterpolator Test Harness</title>
 </head>
 <body>
-<script src="animatePaths/animation.js"></script>
 <label for="scaleX">Scale X</label>
 <input style="margin-left:20px;" type="range" max="1" min="-1" step=".001" value="0" id="scaleX">
 <label for="scaleY">Scale Y</label>
@@ -17,6 +16,7 @@
 </script>
 <script type="module" defer>
   import { createInterpolator } from '../lib/index.js' ;
+  import { animatePaths } from './animatePaths/animation.js';
 
   const interpolator = await createInterpolator({
     joinPathData: true,

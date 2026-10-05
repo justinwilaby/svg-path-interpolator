@@ -1,6 +1,6 @@
 let animationFrame;
 
-function animatePaths(paths) {
+export function animatePaths(paths) {
   cancelAnimationFrame(animationFrame);
   const currentPath = paths.concat();
   const len = paths.length;

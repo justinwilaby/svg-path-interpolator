@@ -4,7 +4,7 @@ SVG Path Interpolator samples SVG paths into flat arrays of x/y coordinates for 
 
 ## Requirements
 
-Node.js 24 or newer is required for the CLI and Node API. Browser use requires modern ES modules and WebAssembly support.
+Node.js 22 or newer is required for the CLI and Node API. Browser use requires modern ES modules and WebAssembly support.
 
 ## Install
 
@@ -96,7 +96,9 @@ For a browser without a bundler, serve this package's `lib/` directory and the `
 
 ## Development
 
-All package source, including the CLI, lives in `src/` as TypeScript. Run `npm run build` to emit ESM and TypeScript declarations into the generated, Git-ignored `lib/` directory. `npm pack` and `npm publish` build it automatically through `prepack`. Run `npm test` to build and run the Node test suite, `npm run typecheck` to check the source without emitting files, and `npm run verify:package` to check the packed package from a fresh consumer project. GitHub Actions runs these checks on Node 22, 24, and 26 using Ubuntu hosted runners.
+All package source, including the CLI, lives in `src/` as TypeScript. Run `npm run build` to emit ESM and TypeScript declarations into the generated, Git-ignored `lib/` directory. `npm pack` and `npm publish` build it automatically through `prepack`. Run `npm test` to build and run the Node test suite, or `npm run check` to type-check, test, and verify the packed package from a fresh consumer project. GitHub Actions runs these checks on Node 22, 24, and 26 using Ubuntu hosted runners.
+
+The package is ESM-only. Prefer imports from the package root; the existing subpath export remains available for compatibility. The SAX parser's WebAssembly binary remains supplied by `sax-wasm` and must be passed to `createInterpolator`, as shown above.
 
 ## Examples
 
