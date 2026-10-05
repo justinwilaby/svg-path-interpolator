@@ -6,13 +6,24 @@ export type Point = {
   y: number;
 }
 
+/**
+ * Counts the work done while sampling one path or whole SVG document.
+ *
+ * The same budget object moves through every calculator, so limits still work
+ * when an arc is split into several curves or a document has several paths.
+ */
 export interface SamplingBudget {
+  /** Stop before trying more than this many sample positions. */
   maxSamples?: number;
+  /** Stop before returning more than this many x/y point pairs. */
   maxOutputPoints?: number;
+  /** Number of sample positions tried so far. */
   samples: number;
+  /** Number of x/y point pairs returned so far. */
   outputPoints: number;
 }
 
+/** Count one sampling attempt and stop before it would exceed the configured limit. */
 export function consumeSample(budget?: SamplingBudget) {
   if (!budget) {
     return;
@@ -23,6 +34,7 @@ export function consumeSample(budget?: SamplingBudget) {
   budget.samples++;
 }
 
+/** Round and save one point, while enforcing the shared output limit. */
 function addPoint(points: number[], x: number, y: number, roundToNearest: number, budget?: SamplingBudget) {
   if (budget?.maxOutputPoints !== undefined && budget.outputPoints >= budget.maxOutputPoints) {
     throw new RangeError(`maxOutputPoints of ${budget.maxOutputPoints} would be exceeded`);
@@ -33,17 +45,18 @@ function addPoint(points: number[], x: number, y: number, roundToNearest: number
   }
 }
 
-// Calculators
-// https://pomax.github.io/bezierinfo/
+/** Find one value between two values at position `t`, where 0 is the start and 1 is the end. */
 function calculateLinear(t: number, p1: number, p2: number): number {
   return p1 + t * (p2 - p1);
 }
 
+/** Find one coordinate on a quadratic Bézier curve at position `t`. */
 function calculatePointQuadratic(t: number, p1: number, p2: number, p3: number): number {
   const oneMinusT = 1 - t;
   return (oneMinusT * oneMinusT) * p1 + 2 * oneMinusT * t * p2 + (t * t) * p3;
 }
 
+/** Find one coordinate on a cubic Bézier curve at position `t`. */
 function calculatePointCubic(t: number, p1: number, p2: number, p3: number, p4: number): number {
   const t2 = t * t;
   const t3 = t2 * t;
@@ -52,6 +65,7 @@ function calculatePointCubic(t: number, p1: number, p2: number, p3: number, p4: 
   return p1 * Math.pow(oneMinusT, 3) + p2 * 3 * (oneMinusT * oneMinusT) * t + p3 * 3 * oneMinusT * t2 + p4 * t3;
 }
 
+/** Sample one or more straight line segments. */
 function calculateCoordinatesLinear(points: number[], minDistance: number, roundToNearest: number, sampleFrequency: number, budget?: SamplingBudget): number[] {
   const pts: number[] = [];
   let [ startX, startY ] = points.splice(0, 2);
@@ -83,6 +97,7 @@ function calculateCoordinatesLinear(points: number[], minDistance: number, round
   return pts;
 }
 
+/** Sample one or more quadratic Bézier curve segments. */
 function calculateCoordinatesQuad(points: number[], minDistance: number, roundToNearest: number, sampleFrequency: number, budget?: SamplingBudget): number[] {
   const pts: number[] = [];
   let [ startX, startY ] = points.splice(0, 2);
@@ -118,6 +133,7 @@ function calculateCoordinatesQuad(points: number[], minDistance: number, roundTo
   return pts;
 }
 
+/** Sample one or more cubic Bézier curve segments. */
 function calculateCoordinatesCubic(points: number[], minDistance: number, roundToNearest: number, sampleFrequency: number, budget?: SamplingBudget): number[] {
   const pts: number[] = [];
   let [ startX, startY ] = points.splice(0, 2);
@@ -154,6 +170,11 @@ function calculateCoordinatesCubic(points: number[], minDistance: number, roundT
   return pts;
 }
 
+/**
+ * Sample smooth cubic curves by reflecting the previous control point.
+ *
+ * SVG uses this rule for its `S` and `s` path commands.
+ */
 function calculateCoordinatesSmoothCubic(points: number[], minDistance: number, roundToNearest: number, sampleFrequency: number, budget?: SamplingBudget): number[] {
   const pts: number[] = [];
   let [ startX, startY, previousCtrl2x, previousCtrl2y ] = points.splice(0, 4);
@@ -182,6 +203,12 @@ function calculateCoordinatesSmoothCubic(points: number[], minDistance: number, 
   return pts;
 }
 
+/**
+ * Sample SVG elliptical arcs.
+ *
+ * Each arc is changed into one or more cubic curves first, then sampled with
+ * the same rules and shared budget as any other curve.
+ */
 function calculateCoordinatesArc(points: number[], minDistance: number, roundToNearest: number, sampleFrequency: number, budget?: SamplingBudget): number[] {
   const pts: number[] = [];
   let [ startX, startY ] = points.splice(0, 2);
@@ -236,6 +263,11 @@ function calculateCoordinatesArc(points: number[], minDistance: number, roundToN
   return pts;
 }
 
+/**
+ * Change an SVG arc into cubic Bézier control points.
+ *
+ * A cubic curve is easier for the rest of this module to sample consistently.
+ */
 function decomposeArcToCubic(point1: Point, rotationInDegrees: number, rx: number, ry: number, largeArcFlag: number, sweepFlag: number, point2: Point): [Point, Point, Point] | [] {
   //----------------------------
   // https://github.com/WebKit/webkit/blob/master/Source/WebCore/svg/SVGPathParser.cpp
@@ -334,6 +366,7 @@ function decomposeArcToCubic(point1: Point, rotationInDegrees: number, rx: numbe
   return cubicBeziers as [Point, Point, Point];
 }
 
+/** Map SVG command letters to the sampler that understands their point layout. */
 export const calculators = {
   a: calculateCoordinatesArc,
   c: calculateCoordinatesCubic,
