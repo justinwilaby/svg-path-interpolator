@@ -8,6 +8,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const temporaryDirectory = await mkdtemp(join(tmpdir(), 'svgpi-package-'));
+const commandSuffix = process.platform === 'win32' ? '.cmd' : '';
+const npmCommand = `npm${commandSuffix}`;
+
+function packageBinary(directory, name) {
+  return join(directory, 'node_modules', '.bin', `${name}${commandSuffix}`);
+}
 
 function run(command, args, cwd = root) {
   const result = spawnSync(command, args, {
@@ -24,7 +30,7 @@ function run(command, args, cwd = root) {
 
 try {
   const [packageInfo] = JSON.parse(
-    run('npm', ['pack', '--json', '--pack-destination', temporaryDirectory]),
+    run(npmCommand, ['pack', '--json', '--pack-destination', temporaryDirectory]),
   );
   const packagedFiles = new Set(packageInfo.files.map(({ path }) => path));
   for (const path of [
@@ -47,7 +53,7 @@ try {
   const consumer = join(temporaryDirectory, 'consumer');
   await mkdir(consumer);
   run(
-    'npm',
+    npmCommand,
     [
       'install',
       '--ignore-scripts',
@@ -75,11 +81,7 @@ try {
   const configFile = join(consumer, 'config.json');
   await writeFile(svgFile, svg);
   await writeFile(configFile, JSON.stringify(options));
-  const cliOutput = run(
-    join(consumer, 'node_modules', '.bin', 'svgpi'),
-    [configFile, svgFile],
-    consumer,
-  );
+  const cliOutput = run(packageBinary(consumer, 'svgpi'), [configFile, svgFile], consumer);
   assert.deepEqual(JSON.parse(cliOutput), { line: [5, 0, 10, 0] });
 
   await writeFile(
@@ -104,7 +106,7 @@ try {
       include: ['consumer.mts'],
     }),
   );
-  run(join(root, 'node_modules', '.bin', 'tsc'), ['-p', 'tsconfig.json'], consumer);
+  run(packageBinary(root, 'tsc'), ['-p', 'tsconfig.json'], consumer);
 
   console.log(`Verified ${packageInfo.id}: files, imports, WASM, CLI, and declarations`);
 } finally {
