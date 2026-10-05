@@ -96,7 +96,7 @@ For a browser without a bundler, serve this package's `lib/` directory and the `
 
 ## Development
 
-Run `npm run build` to emit ESM and TypeScript declarations, `npm test` to build and run the Node test suite, and `npm run typecheck` to check the source without emitting files. The suite runs on Node 26.
+Run `npm run build` to emit ESM and TypeScript declarations, `npm test` to build and run the Node test suite, `npm run typecheck` to check the source without emitting files, and `npm run verify:package` to check the packed package from a fresh consumer project. GitHub Actions runs these checks on Node 24 and 26 using Ubuntu hosted runners.
 
 ## Examples
 

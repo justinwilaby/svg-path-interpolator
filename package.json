@@ -48,7 +48,8 @@
     "build": "tsc -p tsconfig.json",
     "pretest": "npm run build",
     "test": "node --test",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify:package": "node scripts/verify-package.mjs"
   },
   "dependencies": {
     "sax-wasm": "3.1.4"
