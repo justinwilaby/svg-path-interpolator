@@ -1,5 +1,5 @@
 import { SVGTransform } from './SVGTransform.js';
-import { degToRads, isNullOrUndefined, rotatePoint } from './utils.js';
+import { degToRads, isNullOrUndefined } from './utils.js';
 
 export type Point = {
   x: number;
@@ -62,7 +62,13 @@ function calculatePointCubic(t: number, p1: number, p2: number, p3: number, p4: 
   const t3 = t2 * t;
   const oneMinusT = 1 - t;
 
-  return p1 * Math.pow(oneMinusT, 3) + p2 * 3 * (oneMinusT * oneMinusT) * t + p3 * 3 * oneMinusT * t2 + p4 * t3;
+  // Calculate each Bernstein weight before multiplying by its coordinate.
+  // This avoids overflowing a finite control point solely because it is first
+  // multiplied by 3.
+  return p1 * Math.pow(oneMinusT, 3)
+    + p2 * (3 * oneMinusT * oneMinusT * t)
+    + p3 * (3 * oneMinusT * t2)
+    + p4 * t3;
 }
 
 /** Sample one or more straight line segments. */
@@ -269,99 +275,129 @@ function calculateCoordinatesArc(points: number[], minDistance: number, roundToN
  * A cubic curve is easier for the rest of this module to sample consistently.
  */
 function decomposeArcToCubic(point1: Point, rotationInDegrees: number, rx: number, ry: number, largeArcFlag: number, sweepFlag: number, point2: Point): [Point, Point, Point] | [] {
-  //----------------------------
-  // https://github.com/WebKit/webkit/blob/master/Source/WebCore/svg/SVGPathParser.cpp
-  //----------------------------
-  // Conversion from endpoint to center parameterization
-  // https://www.w3.org/TR/SVG/implnote.html#ArcConversionEndpointToCenter
-  const angleRads = degToRads(rotationInDegrees);
-  const midPointDistance = { x: (point1.x - point2.x) * .5, y: (point1.y - point2.y) * .5 };
-  const transformedMidPoint = rotatePoint(0, 0, midPointDistance.x, midPointDistance.y, -angleRads, -angleRads);
-  const squareRx = rx * rx;
-  const squareRy = ry * ry;
-  const squareX = transformedMidPoint.x * transformedMidPoint.x;
-  const squareY = transformedMidPoint.y * transformedMidPoint.y;
+  // This follows SVG's endpoint-to-center conversion, then approximates each
+  // quarter-or-smaller ellipse section with a cubic Bézier curve.
+  const phi = degToRads(rotationInDegrees % 360);
+  const cosPhi = Math.cos(phi);
+  const sinPhi = Math.sin(phi);
+  // Divide before subtracting so opposite finite coordinates near the limits
+  // of a JavaScript number do not overflow while finding their midpoint delta.
+  const halfDx = point1.x / 2 - point2.x / 2;
+  const halfDy = point1.y / 2 - point2.y / 2;
+  const x1p = cosPhi * halfDx + sinPhi * halfDy;
+  const y1p = -sinPhi * halfDx + cosPhi * halfDy;
 
-  // Check if the radii are big enough to draw the arc, scale radii if not.
-  // http://www.w3.org/TR/SVG/implnote.html#ArcCorrectionOutOfRangeRadii
-  const radiiScale = squareX / squareRx + squareY / squareRy;
-  if (radiiScale > 1) {
-    const sqrtRadiiScale = Math.sqrt(radiiScale);
-    rx *= sqrtRadiiScale;
-    ry *= sqrtRadiiScale;
+  const coordinateScale = Math.max(Math.abs(x1p), Math.abs(y1p));
+  if (coordinateScale === 0) {
+    return [];
   }
-  // Apply scale
-  point1 = { x: point1.x * (1 / rx), y: point1.y * (1 / ry) };
-  point2 = { x: point2.x * (1 / rx), y: point2.y * (1 / ry) };
-  // Apply rotation
-  point1 = rotatePoint(0, 0, point1.x, point1.y, -angleRads, -angleRads);
-  point2 = rotatePoint(0, 0, point2.x, point2.y, -angleRads, -angleRads);
 
-  const delta = { x: point2.x - point1.x, y: point2.y - point1.y };
-  const d = delta.x * delta.x + delta.y * delta.y;
-  const scaleFactorSquared = Math.max(1 / d - 0.25, 0);
-  let scaleFactor = Math.sqrt(scaleFactorSquared);
-  if (sweepFlag===largeArcFlag) {
-    scaleFactor = -scaleFactor;
-  }
-  delta.x *= scaleFactor;
-  delta.y *= scaleFactor;
-  let centerPoint = { x: (point1.x + point2.x) * .5, y: (point1.y + point2.y) * .5 };
-  // https://github.com/WebKit/webkit/blob/master/Source/WebCore/svg/SVGPathParser.cpp#L465
-  centerPoint.x -= delta.y;
-  centerPoint.y += delta.x;
-
-  const theta1 = Math.atan2(point1.y - centerPoint.y, point1.x - centerPoint.x);
-  const theta2 = Math.atan2(point2.y - centerPoint.y, point2.x - centerPoint.x);
-
-  let thetaArc = theta2 - theta1;
-  if (thetaArc < 0 && sweepFlag)
-    thetaArc += 2 * Math.PI;
-  else if (thetaArc > 0 && !sweepFlag)
-    thetaArc -= 2 * Math.PI;
-
-  // Some results of atan2 on some platform implementations are not exact enough. So that we get more
-  // cubic curves than expected here. Adding 0.001f reduces the count of segments to the correct count.
-  const cubicBeziers = []; // Triplet points - Assumes the start point is the end point from the previous command
-  const segments = Math.ceil(Math.abs(thetaArc / ((Math.PI / 2) + 0.001)));
-  for (let i = 0; i < segments; i++) {
-    const startTheta = theta1 + i * thetaArc / segments;
-    const endTheta = theta1 + (i + 1) * thetaArc / segments;
-    const t = (8 / 6) * Math.tan(0.25 * (endTheta - startTheta));
-    if (!isFinite(t)) {
-      return [];
+  // Keep the correction calculation close to one. Directly squaring very large
+  // or very small radii can overflow or underflow even when the final ellipse
+  // is representable.
+  const normalizedX = x1p / coordinateScale;
+  const normalizedY = y1p / coordinateScale;
+  const radiusScale = Math.max(rx, ry);
+  const normalizedRx = rx / radiusScale;
+  const normalizedRy = ry / radiusScale;
+  const radiusDistance = Math.hypot(
+    normalizedX / normalizedRx,
+    normalizedY / normalizedRy
+  );
+  if (radiusDistance > radiusScale / coordinateScale) {
+    const correctedRx = coordinateScale * Math.hypot(
+      normalizedX,
+      normalizedY * (normalizedRx / normalizedRy)
+    );
+    const correctedRy = coordinateScale * Math.hypot(
+      normalizedX * (normalizedRy / normalizedRx),
+      normalizedY
+    );
+    if (!Number.isFinite(correctedRx) || !Number.isFinite(correctedRy)) {
+      throw new RangeError('SVG arc cannot be represented with finite radii');
     }
-    const sinStartTheta = Math.sin(startTheta);
-    const cosStartTheta = Math.cos(startTheta);
-    const sinEndTheta = Math.sin(endTheta);
-    const cosEndTheta = Math.cos(endTheta);
+    rx = correctedRx;
+    ry = correctedRy;
+  }
 
-    point1 = { x: cosStartTheta - t * sinStartTheta, y: sinStartTheta + t * cosStartTheta };
-    point1.x += centerPoint.x;
-    point1.y += centerPoint.y;
+  const endpointDistance = Math.hypot(x1p / rx, y1p / ry);
+  if (!Number.isFinite(endpointDistance) || endpointDistance === 0) {
+    return [];
+  }
 
-    let targetPoint = { x: cosEndTheta, y: sinEndTheta };
-    targetPoint.x += centerPoint.x;
-    targetPoint.y += centerPoint.y;
+  let centerFactor = Math.sqrt(Math.max(0, 1 - endpointDistance * endpointDistance)) / endpointDistance;
+  if (largeArcFlag === sweepFlag) {
+    centerFactor = -centerFactor;
+  }
 
-    point2 = Object.assign({}, targetPoint);
-    point2.x += t * sinEndTheta;
-    point2.y += -t * cosEndTheta;
+  const centerXp = centerFactor * ((rx / ry) * y1p);
+  const centerYp = centerFactor * (-(ry / rx) * x1p);
+  const startUnitX = (x1p - centerXp) / rx;
+  const startUnitY = (y1p - centerYp) / ry;
+  const endUnitX = (-x1p - centerXp) / rx;
+  const endUnitY = (-y1p - centerYp) / ry;
+  if (![centerXp, centerYp, startUnitX, startUnitY, endUnitX, endUnitY].every(Number.isFinite)) {
+    throw new RangeError('SVG arc cannot be represented with finite coordinates');
+  }
+  let arcAngle = Math.atan2(
+    startUnitX * endUnitY - startUnitY * endUnitX,
+    startUnitX * endUnitX + startUnitY * endUnitY
+  );
+  if (sweepFlag && arcAngle < 0) {
+    arcAngle += Math.PI * 2;
+  } else if (!sweepFlag && arcAngle > 0) {
+    arcAngle -= Math.PI * 2;
+  }
 
-    // rotate and scale
-    point1 = rotatePoint(0, 0, point1.x, point1.y, angleRads, angleRads);
-    point1.x *= rx;
-    point1.y *= ry;
+  const segmentCount = Math.ceil(Math.abs(arcAngle) / (Math.PI / 2));
+  if (!Number.isFinite(segmentCount) || segmentCount === 0) {
+    return [];
+  }
 
-    point2 = rotatePoint(0, 0, point2.x, point2.y, angleRads, angleRads);
-    point2.x *= rx;
-    point2.y *= ry;
-
-    targetPoint = rotatePoint(0, 0, targetPoint.x, targetPoint.y, angleRads, angleRads);
-    targetPoint.x *= rx;
-    targetPoint.y *= ry;
-
-    cubicBeziers.push(point1, point2, targetPoint);
+  const outputScale = Math.max(
+    Math.abs(point1.x),
+    Math.abs(point1.y),
+    Math.abs(point2.x),
+    Math.abs(point2.y),
+    rx,
+    ry
+  );
+  const mapToEllipse = (x: number, y: number): Point => ({
+    // Do the addition in a common scale. This avoids an intermediate overflow
+    // when a finite endpoint is the difference of two very large values.
+    x: outputScale * (
+      point1.x / outputScale
+      + (rx / outputScale) * cosPhi * (x - startUnitX)
+      - (ry / outputScale) * sinPhi * (y - startUnitY)
+    ),
+    y: outputScale * (
+      point1.y / outputScale
+      + (rx / outputScale) * sinPhi * (x - startUnitX)
+      + (ry / outputScale) * cosPhi * (y - startUnitY)
+    )
+  });
+  const cubicBeziers: Point[] = [];
+  const segmentAngle = arcAngle / segmentCount;
+  for (let index = 0; index < segmentCount; index++) {
+    const startOffset = index * segmentAngle;
+    const endOffset = startOffset + segmentAngle;
+    const startCos = Math.cos(startOffset);
+    const startSin = Math.sin(startOffset);
+    const endCos = Math.cos(endOffset);
+    const endSin = Math.sin(endOffset);
+    const startX = startUnitX * startCos - startUnitY * startSin;
+    const startY = startUnitX * startSin + startUnitY * startCos;
+    const endX = startUnitX * endCos - startUnitY * endSin;
+    const endY = startUnitX * endSin + startUnitY * endCos;
+    const alpha = (4 / 3) * Math.tan(segmentAngle / 4);
+    const targetPoint = index === segmentCount - 1
+      ? point2
+      : mapToEllipse(endX, endY);
+    cubicBeziers.push(
+      mapToEllipse(startX - alpha * startY, startY + alpha * startX),
+      mapToEllipse(endX + alpha * endY, endY - alpha * endX),
+      targetPoint
+    );
   }
   return cubicBeziers as [Point, Point, Point];
 }

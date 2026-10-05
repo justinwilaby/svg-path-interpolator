@@ -35,7 +35,7 @@ try {
   );
   const packagedFiles = new Set(packageInfo.files.map(({ path }) => path));
   for (const path of [
-    'THIRD_PARTY_NOTICES.md',
+    'CHANGELOG.md',
     'lib/cli.js',
     'lib/cli.d.ts',
     'lib/index.js',

@@ -1,73 +1,30 @@
-/**
- * Javascript adaptation of AffineTransform.ccp from
- * https://github.com/WebKit/webkit/blob/66e68cd8d7bf4ea1cf52f31ed9cb242f83ea5b57/Source/WebCore/platform/graphics/transforms/AffineTransform.cpp
- */
-/*
- * Copyright (C) Research In Motion Limited 2010. All rights reserved.
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Library General Public
- * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Library General Public License for more details.
- *
- * You should have received a copy of the GNU Library General Public License
- * along with this library; see the file COPYING.LIB.  If not, write to
- * the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- * Boston, MA 02110-1301, USA.
- */
-/*
- * Copyright (C) 2005, 2006 Apple Inc.  All rights reserved.
- *               2010 Dirk Schulze <krit@webkit.org>
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY APPLE INC. ``AS IS'' AND ANY
- * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL APPLE INC. OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
- * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
 import { degToRads, radToDeg } from './utils.js';
 import type { Point } from './calculators.js';
 
+/**
+ * A mutable 2D affine transform using SVG's six matrix values.
+ *
+ * Points are mapped with `x' = ax + cy + e` and `y' = bx + dy + f`.
+ * Each transform method appends its operation to the current matrix.
+ */
 export class SVGTransform {
-
   protected m_transform: number[];
 
   constructor(a = 1, b = 0, c = 0, d = 1, e = 0, f = 0) {
-    this.m_transform = [ +a, +b, +c, +d, +e, +f ];
+    this.m_transform = [Number(a), Number(b), Number(c), Number(d), Number(e), Number(f)];
   }
 
   makeIdentity() {
-    this.setMatrix(1, 0, 0, 1, 0, 0);
+    this.setMatrix();
   }
 
   setMatrix(a = 1, b = 0, c = 0, d = 1, e = 0, f = 0) {
-    const m_transform = this.m_transform;
-    m_transform[0] = +a;
-    m_transform[1] = +b;
-    m_transform[2] = +c;
-    m_transform[3] = +d;
-    m_transform[4] = +e;
-    m_transform[5] = +f;
+    this.m_transform[0] = Number(a);
+    this.m_transform[1] = Number(b);
+    this.m_transform[2] = Number(c);
+    this.m_transform[3] = Number(d);
+    this.m_transform[4] = Number(e);
+    this.m_transform[5] = Number(f);
   }
 
   matrix(a = 1, b = 0, c = 0, d = 1, e = 0, f = 0) {
@@ -75,117 +32,85 @@ export class SVGTransform {
   }
 
   isIdentity() {
-    const m_transform = this.m_transform;
-
-    return (m_transform[0]===1 && m_transform[1]===0
-        && m_transform[2]===0 && m_transform[3]===1
-        && m_transform[4]===0 && m_transform[5]===0);
+    const [a, b, c, d, e, f] = this.m_transform;
+    return a === 1 && b === 0 && c === 0 && d === 1 && e === 0 && f === 0;
   }
 
   static det(transform: number[]) {
-    return +(transform[0] * transform[3] - transform[1] * transform[2]);
+    return transform[0] * transform[3] - transform[1] * transform[2];
   }
 
   get xScale() {
-    const m_transform = this.m_transform;
-
-    return Math.sqrt(m_transform[0] * m_transform[0] + m_transform[1] * m_transform[1]);
+    const [a, b] = this.m_transform;
+    return Math.hypot(a, b);
   }
 
   get yScale() {
-    const m_transform = this.m_transform;
-    return Math.sqrt(m_transform[2] * m_transform[2] + m_transform[3] * m_transform[3]);
+    const [, , c, d] = this.m_transform;
+    return Math.hypot(c, d);
   }
 
   get isInvertible() {
     const determinant = SVGTransform.det(this.m_transform);
-    return Boolean(determinant && isFinite(determinant));
+    return determinant !== 0 && Number.isFinite(determinant);
   }
 
   inverse() {
-    const m_transform = this.m_transform;
-    const determinant = SVGTransform.det(m_transform);
-    const result = new SVGTransform();
+    const [a, b, c, d, e, f] = this.m_transform;
+    const determinant = SVGTransform.det(this.m_transform);
+
     if (this.isIdentityOrTranslation()) {
-      result.m_transform[4] = -m_transform[4];
-      result.m_transform[5] = -m_transform[5];
-      return result;
+      return new SVGTransform(1, 0, 0, 1, -e, -f);
     }
 
-    result.m_transform[0] = m_transform[3] / determinant;
-    result.m_transform[1] = -m_transform[1] / determinant;
-    result.m_transform[2] = -m_transform[2] / determinant;
-    result.m_transform[3] = m_transform[0] / determinant;
-    result.m_transform[4] = (m_transform[2] * m_transform[5] - m_transform[3] * m_transform[4]) / determinant;
-    result.m_transform[5] = (m_transform[1] * m_transform[4] - m_transform[0] * m_transform[5]) / determinant;
-
-    return result;
+    return new SVGTransform(
+      d / determinant,
+      -b / determinant,
+      -c / determinant,
+      a / determinant,
+      (c * f - d * e) / determinant,
+      (b * e - a * f) / determinant
+    );
   }
 
   isIdentityOrTranslation() {
-    const m_transform = this.m_transform;
-    return m_transform[0]===1 && m_transform[1]===0 && m_transform[2]===0 && m_transform[3]===1;
+    const [a, b, c, d] = this.m_transform;
+    return a === 1 && b === 0 && c === 0 && d === 1;
   }
 
+  /** Append another transform to this matrix. */
   multiply(other: SVGTransform) {
-    const m_transform = this.m_transform;
-    const trans = new SVGTransform();
-    const om_transform = other.m_transform;
-    const tm_transform = trans.m_transform;
-
-    tm_transform[0] = om_transform[0] * m_transform[0] + om_transform[1] * m_transform[2];
-    tm_transform[1] = om_transform[0] * m_transform[1] + om_transform[1] * m_transform[3];
-    tm_transform[2] = om_transform[2] * m_transform[0] + om_transform[3] * m_transform[2];
-    tm_transform[3] = om_transform[2] * m_transform[1] + om_transform[3] * m_transform[3];
-    tm_transform[4] = om_transform[4] * m_transform[0] + om_transform[5] * m_transform[2] + m_transform[4];
-    tm_transform[5] = om_transform[4] * m_transform[1] + om_transform[5] * m_transform[3] + m_transform[5];
-
-    this.m_transform = trans.m_transform;
+    const [a, b, c, d, e, f] = this.m_transform;
+    const [oa, ob, oc, od, oe, of] = other.m_transform;
+    this.m_transform = [
+      a * oa + c * ob,
+      b * oa + d * ob,
+      a * oc + c * od,
+      b * oc + d * od,
+      a * oe + c * of + e,
+      b * oe + d * of + f
+    ];
     return this;
   }
 
-  rotate(degrees: number, x: number, y: number) {
-    const translateFlag = Boolean(x!==undefined && y!==undefined);
-    if (translateFlag) {
+  rotate(degrees: number, x?: number, y?: number) {
+    if (x !== undefined && y !== undefined) {
       this.translate(x, y);
     }
-    const rads = degToRads(degrees);
-    const cosAngle = Math.cos(rads);
-    const sinAngle = Math.sin(rads);
-    const rot = new SVGTransform(cosAngle, sinAngle, -sinAngle, cosAngle, 0, 0);
-
-    this.multiply(rot);
-
-    if (translateFlag) {
+    const radians = degToRads(degrees);
+    this.multiply(new SVGTransform(Math.cos(radians), Math.sin(radians), -Math.sin(radians), Math.cos(radians)));
+    if (x !== undefined && y !== undefined) {
       this.translate(-x, -y);
     }
     return this;
   }
 
-  scale(sx: number, sy: number) {
-    const m_transform = this.m_transform;
-    if (sy===undefined) {
-      sy = sx;
-    }
-    m_transform[0] *= sx;
-    m_transform[1] *= sx;
-    m_transform[2] *= sy;
-    m_transform[3] *= sy;
-
-    return this;
+  scale(sx: number, sy = sx) {
+    return this.multiply(new SVGTransform(sx, 0, 0, sy));
   }
 
-  translate(tx: number, ty: number) {
-    const m_transform = this.m_transform;
-    if (this.isIdentityOrTranslation()) {
-      m_transform[4] += tx;
-      m_transform[5] += ty;
-      return this;
-    }
-
-    m_transform[4] += tx * m_transform[0] + ty * m_transform[2];
-    m_transform[5] += tx * m_transform[1] + ty * m_transform[3];
-    return this;
+  translate(tx: number, ty = 0) {
+    return this.multiply(new SVGTransform(1, 0, 0, 1, tx, ty));
   }
 
   rotateFromVector(x: number, y: number) {
@@ -201,15 +126,7 @@ export class SVGTransform {
   }
 
   shear(sx: number, sy: number) {
-    const m_transform = this.m_transform;
-    const a = m_transform[0];
-    const b = m_transform[1];
-
-    m_transform[0] += sy * m_transform[2];
-    m_transform[1] += sy * m_transform[3];
-    m_transform[2] += sx * a;
-    m_transform[3] += sx * b;
-    return this;
+    return this.multiply(new SVGTransform(1, sy, sx, 1));
   }
 
   skew(angleX: number, angleY: number) {
@@ -225,11 +142,8 @@ export class SVGTransform {
   }
 
   map(x: number, y: number) {
-    const m_transform = this.m_transform;
-    return {
-      x: (m_transform[0] * x + m_transform[2] * y + m_transform[4]),
-      y: (m_transform[1] * x + m_transform[3] * y + m_transform[5])
-    }
+    const [a, b, c, d, e, f] = this.m_transform;
+    return { x: a * x + c * y + e, y: b * x + d * y + f };
   }
 
   mapPoint(point: Point) {
