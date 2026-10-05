@@ -50,14 +50,21 @@
     "prepack": "npm run build",
     "pretest": "npm run build",
     "test": "node --test",
+    "test:coverage": "npm run build && node --test --experimental-test-coverage",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "check": "npm run typecheck && npm test && npm run verify:package",
-    "verify:package": "node scripts/verify-package.mjs"
+    "lint": "biome lint .",
+    "format:check": "biome format .",
+    "format": "biome format --write .",
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm run test:coverage && npm run verify:package",
+    "verify:package": "node scripts/verify-package.mjs",
+    "test:browser": "node scripts/browser-smoke.mjs"
   },
   "dependencies": {
     "sax-wasm": "3.1.4"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "@playwright/test": "^1.63.0",
     "@types/node": "22.20.5",
     "typescript": "7.0.2"
   }

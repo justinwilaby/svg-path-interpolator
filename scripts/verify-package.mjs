@@ -8,11 +8,18 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const temporaryDirectory = await mkdtemp(join(tmpdir(), 'svgpi-package-'));
+const commandSuffix = process.platform === 'win32' ? '.cmd' : '';
+const npmCommand = `npm${commandSuffix}`;
+
+function packageBinary(directory, name) {
+  return join(directory, 'node_modules', '.bin', `${name}${commandSuffix}`);
+}
 
 function run(command, args, cwd = root) {
   const result = spawnSync(command, args, {
     cwd,
     encoding: 'utf8',
+    shell: process.platform === 'win32',
     env: { ...process.env, npm_config_cache: join(temporaryDirectory, 'npm-cache') },
   });
   if (result.error) {
@@ -23,9 +30,9 @@ function run(command, args, cwd = root) {
 }
 
 try {
-  const [packageInfo] = JSON.parse(run('npm', [
-    'pack', '--json', '--pack-destination', temporaryDirectory,
-  ]));
+  const [packageInfo] = JSON.parse(
+    run(npmCommand, ['pack', '--json', '--pack-destination', temporaryDirectory]),
+  );
   const packagedFiles = new Set(packageInfo.files.map(({ path }) => path));
   for (const path of [
     'THIRD_PARTY_NOTICES.md',
@@ -46,13 +53,19 @@ try {
 
   const consumer = join(temporaryDirectory, 'consumer');
   await mkdir(consumer);
-  run('npm', [
-    'install', '--ignore-scripts', '--no-audit', '--no-fund',
-    join(temporaryDirectory, packageInfo.filename),
-  ], consumer);
+  run(
+    npmCommand,
+    [
+      'install',
+      '--ignore-scripts',
+      '--no-audit',
+      '--no-fund',
+      join(temporaryDirectory, packageInfo.filename),
+    ],
+    consumer,
+  );
 
   const consumerRequire = createRequire(join(consumer, 'package.json'));
-  const packageRoot = join(consumer, 'node_modules', 'svg-path-interpolator');
   const { createInterpolator, SVGPathInterpolator } = await import(
     pathToFileURL(consumerRequire.resolve('svg-path-interpolator')).href
   );
@@ -69,28 +82,32 @@ try {
   const configFile = join(consumer, 'config.json');
   await writeFile(svgFile, svg);
   await writeFile(configFile, JSON.stringify(options));
-  const cliOutput = run(join(consumer, 'node_modules', '.bin', 'svgpi'), [
-    configFile, svgFile,
-  ], consumer);
+  const cliOutput = run(packageBinary(consumer, 'svgpi'), [configFile, svgFile], consumer);
   assert.deepEqual(JSON.parse(cliOutput), { line: [5, 0, 10, 0] });
 
-  await writeFile(join(consumer, 'consumer.mts'), [
-    "import { createInterpolator, SVGPathInterpolator, type SVGInterpolatorConfig } from 'svg-path-interpolator';",
-    'const config: SVGInterpolatorConfig = { joinPathData: true };',
-    'new SVGPathInterpolator(config).interpolatePath("M0 0 L10 0");',
-    'createInterpolator(config, new Uint8Array());',
-  ].join('\n'));
-  await writeFile(join(consumer, 'tsconfig.json'), JSON.stringify({
-    compilerOptions: {
-      module: 'NodeNext',
-      moduleResolution: 'NodeNext',
-      target: 'ES2022',
-      strict: true,
-      noEmit: true,
-    },
-    include: ['consumer.mts'],
-  }));
-  run(join(root, 'node_modules', '.bin', 'tsc'), ['-p', 'tsconfig.json'], consumer);
+  await writeFile(
+    join(consumer, 'consumer.mts'),
+    [
+      "import { createInterpolator, SVGPathInterpolator, type SVGInterpolatorConfig } from 'svg-path-interpolator';",
+      'const config: SVGInterpolatorConfig = { joinPathData: true };',
+      'new SVGPathInterpolator(config).interpolatePath("M0 0 L10 0");',
+      'createInterpolator(config, new Uint8Array());',
+    ].join('\n'),
+  );
+  await writeFile(
+    join(consumer, 'tsconfig.json'),
+    JSON.stringify({
+      compilerOptions: {
+        module: 'NodeNext',
+        moduleResolution: 'NodeNext',
+        target: 'ES2022',
+        strict: true,
+        noEmit: true,
+      },
+      include: ['consumer.mts'],
+    }),
+  );
+  run(packageBinary(root, 'tsc'), ['-p', 'tsconfig.json'], consumer);
 
   console.log(`Verified ${packageInfo.id}: files, imports, WASM, CLI, and declarations`);
 } finally {
