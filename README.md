@@ -1,5 +1,8 @@
 # SVG Path Interpolator
-The SVG Path Interpolator produces point data representing interpolated values within an SVG path.  This is handy when you need to calculate complex paths for animation or drawing APIs beforehand.  Complex paths that include Bézier curves are converted to polygons with a configurable segment sampling size producing more points with greater precision or fewer points for speed.  Polygon path data can be used to animate, draw or for hit detection in games. 
+The SVG Path Interpolator produces point data representing interpolated values within an SVG path.  This is handy when you need to calculate complex paths for animation or drawing APIs beforehand.  Complex paths that include Bézier curves are converted to polygons with a configurable segment sampling size producing more points with greater precision or fewer points for speed.  Polygon path data can be used to animate, draw or for hit detection in games.
+
+## Development
+Run `npm test` to build the library and run its tests with Node's built-in test runner. Run `npm run typecheck` to check the TypeScript source. The test suite is verified on Node 26.
 
 ## Install
 ```bash

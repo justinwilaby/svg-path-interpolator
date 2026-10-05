@@ -9,7 +9,7 @@
     "url": "https://github.com/justinwilaby/svg-path-interpolator.git"
   },
   "bin": {
-    "svgpi": "./bin/svgpi"
+    "svgpi": "./bin/svgpi.mjs"
   },
   "engines": {
     "node": ">=14.x"
@@ -44,7 +44,10 @@
     "polygon"
   ],
   "scripts": {
-    "build": "node import-path-plugin.mjs && node copy-deps.mjs"
+    "build": "node import-path-plugin.mjs && node copy-deps.mjs",
+    "pretest": "npm run build",
+    "test": "node --test",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "sax-wasm": "2.2.0"
