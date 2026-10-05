@@ -2,8 +2,8 @@ import { SaxEventType, SAXParser, Tag } from 'sax-wasm';
 import { calculators } from './math/calculators.js';
 import { SVGTransform } from './math/SVGTransform.js';
 
-const commandRegEx = /(m|l|c|q|z|a|v|h|s|z)(?: ?)([\d+-., ]*)/ig;
-const argumentsRegEx = /([-]?\d+\.*\d*)(?:,| )?/g;
+const commandRegEx = /([mlcqzavhst])\s*([-+\d.eE,\s]*)/ig;
+const argumentsRegEx = /[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/g;
 const transformRegEx = /(matrix|translate|scale|rotate|skewX|skewY)(?:\()(.*)(?:\))/;
 type CallableSvgTransform = {[P in keyof SVGTransform]: SVGTransform[P] extends CallableFunction ? P: never}[keyof SVGTransform]
 export interface SVGInterpolatorConfig {
@@ -110,10 +110,10 @@ export class SVGPathInterpolator {
     const args: (string | number)[] = [];
     let arg;
     while (arg = argumentsRegEx.exec(source)) {
-      if (isFinite(+arg[1])) {
-        args.push(+arg[1]);
+      if (isFinite(+arg[0])) {
+        args.push(+arg[0]);
       } else {
-        args.push(arg[1]);
+        args.push(arg[0]);
       }
     }
     return args;
@@ -191,6 +191,8 @@ export class SVGPathInterpolator {
     let args;
     let match;
     let lastCommand = { command: '', points: undefined, offsets: undefined };
+    let lastQuadraticControlX = 0;
+    let lastQuadraticControlY = 0;
     while (match = commandRegEx.exec(path)) {
       const [, command, rawArguments] = match;
       let points = this.parseArguments(rawArguments) as number[];
@@ -206,8 +208,6 @@ export class SVGPathInterpolator {
 
         case 'S':
         case 's':
-        case 'T':
-        case 't':
           let lastCtrlX;
           let lastCtrlY;
           const { command: lastC, points: lastP } = lastCommand;
@@ -225,6 +225,26 @@ export class SVGPathInterpolator {
           args.unshift(offsetX, offsetY, lastCtrlX, lastCtrlY);
           args = [args];
           break;
+
+        case 'T':
+        case 't':
+          for (let i = 0; i < points.length; i += 2) {
+            const reflect = /^[qt]$/i.test(lastCommand.command);
+            const controlX = reflect ? 2 * offsetX - lastQuadraticControlX : offsetX;
+            const controlY = reflect ? 2 * offsetY - lastQuadraticControlY : offsetY;
+            const endX = command === 't' ? offsetX + points[i] : points[i];
+            const endY = command === 't' ? offsetY + points[i + 1] : points[i + 1];
+            data.push(...calculators.q(
+              [offsetX, offsetY, controlX, controlY, endX, endY],
+              this.minDistance, this.roundToNearest, this.sampleFrequency
+            ));
+            offsetX = endX;
+            offsetY = endY;
+            lastQuadraticControlX = controlX;
+            lastQuadraticControlY = controlY;
+            lastCommand.command = command;
+          }
+          continue;
 
         case 'a':
           points.unshift(0, 0);
@@ -299,6 +319,10 @@ export class SVGPathInterpolator {
 
         offsetY = points[len - 1];
         offsetX = points[len - 2];
+        if (command.toLowerCase() === 'q') {
+          lastQuadraticControlX = points[len - 4];
+          lastQuadraticControlY = points[len - 3];
+        }
       }
       lastCommand = { command, points, offsets };
     }
@@ -311,27 +335,21 @@ export class SVGPathInterpolator {
   trimPathOffsets(paths: number[]) {
     let minX = Number.POSITIVE_INFINITY;
     let minY = Number.POSITIVE_INFINITY;
-    let i = paths.length;
-    let x;
-    let y;
-    if (!i) {
+    if (!paths.length) {
       return;
     }
-    while (i -= 2) {
-      x = paths[i];
-      y = paths[i - 1];
-      if (x < minX) {
-        minX = x;
+    for (let i = 0; i < paths.length; i += 2) {
+      if (paths[i] < minX) {
+        minX = paths[i];
       }
-      if (y < minY) {
-        minY = y;
+      if (paths[i + 1] < minY) {
+        minY = paths[i + 1];
       }
     }
 
-    i = paths.length;
-    while (i -= 2) {
+    for (let i = 0; i < paths.length; i += 2) {
       paths[i] -= minX;
-      paths[i - 1] -= minY;
+      paths[i + 1] -= minY;
     }
   }
 
