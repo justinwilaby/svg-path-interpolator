@@ -5,6 +5,7 @@ import type { SVGInterpolatorConfig } from './SVGPathInterpolator.js';
 export { SVGPathInterpolator } from './SVGPathInterpolator.js';
 export type { SVGInterpolatorConfig } from './SVGPathInterpolator.js';
 
+/** A source for the WebAssembly parser required to process complete SVG documents. */
 export type SaxWasmSource = string | URL | Uint8Array | Response;
 
 async function getParser(saxWasmSource: SaxWasmSource) {
@@ -23,6 +24,12 @@ async function getParser(saxWasmSource: SaxWasmSource) {
   return parser;
 }
 
+/**
+ * Create an interpolator that can process complete SVG documents.
+ *
+ * Provide the SAX WebAssembly bytes, a URL, or a fetch `Response`. The package
+ * does not bundle that binary, so callers choose how it is loaded.
+ */
 export async function createInterpolator(config: Omit<SVGInterpolatorConfig, 'parser'>, saxWasmSource: SaxWasmSource) {
   const parser = await getParser(saxWasmSource);
   return new SVGPathInterpolator({ ...config, parser });

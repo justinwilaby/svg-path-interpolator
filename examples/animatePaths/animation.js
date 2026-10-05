@@ -15,7 +15,7 @@ export function animatePaths(paths) {
   let maxY = Number.NEGATIVE_INFINITY;
   let x;
   let y;
-  while (i -= 2) {
+  while ((i -= 2)) {
     x = paths[i];
     y = paths[i - 1];
     if (x > maxX) {

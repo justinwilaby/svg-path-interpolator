@@ -13,16 +13,30 @@ const pathArgumentCounts: Record<string, number> = {
   M: 2, L: 2, H: 1, V: 1, C: 6, S: 4, Q: 4, T: 2, A: 7
 };
 export interface SVGInterpolatorConfig {
+  /** Return all sampled paths in one flat array instead of an object keyed by path ID. */
   joinPathData?: boolean,
+  /** Skip points that are closer than this distance to the last saved point. */
   minDistance?: number,
+  /** Round each coordinate down to the nearest multiple of this value. */
   roundToNearest?: number,
+  /** Set how often curves are sampled. Smaller values create more points and take more work. */
   sampleFrequency?: number,
+  /** Move the sampled points so the smallest x and y values become zero. */
   trim?: boolean,
+  /** Internal prepared SVG parser. `createInterpolator` supplies this automatically. */
   parser?: SAXParser,
+  /** Stop after this many sampling attempts. Leave unset for no attempt limit. */
   maxSamples?: number,
+  /** Stop after this many emitted x/y point pairs. Leave unset for no output limit. */
   maxOutputPoints?: number
 }
 
+/**
+ * Turns SVG path data into sampled x/y coordinate pairs.
+ *
+ * Create this class directly when you only need `interpolatePath`. Use
+ * `createInterpolator` when you also need to read complete SVG documents.
+ */
 export class SVGPathInterpolator {
   /**
    * When trim is true, paths that were translated
@@ -72,10 +86,18 @@ export class SVGPathInterpolator {
    */
   sampleFrequency = 0.001;
 
-  /** Maximum sample attempts for one interpolation operation. */
+  /**
+   * Maximum sample attempts for one interpolation operation.
+   *
+   * This limit includes attempts that do not produce a saved point.
+   */
   maxSamples?: number;
 
-  /** Maximum emitted coordinate pairs for one interpolation operation. */
+  /**
+   * Maximum emitted coordinate pairs for one interpolation operation.
+   *
+   * This limit is shared by every path in a processed SVG document.
+   */
   maxOutputPoints?: number;
 
   /**
@@ -157,6 +179,7 @@ export class SVGPathInterpolator {
     }
   }
 
+  /** Read the numeric values from one SVG path or transform argument string. */
   parseArguments(source: string): number[] {
     const args: number[] = [];
     let arg;
@@ -166,6 +189,12 @@ export class SVGPathInterpolator {
     return args;
   }
 
+  /**
+   * Read every path in an SVG document and return its sampled points.
+   *
+   * Paths are keyed by `id` unless `joinPathData` is enabled. The configured
+   * sample and output limits apply to the whole document, not one path at a time.
+   */
   processSVG(data: Uint8Array): number[] | Record<string, number[]> {
     if (!this.parser) {
       throw new Error('A prepared SAX parser is required to process SVG');
@@ -451,6 +480,11 @@ export class SVGPathInterpolator {
     }
   }
 
+  /**
+   * Sample one SVG path-data string and return a flat x/y coordinate array.
+   *
+   * Invalid path data and exhausted limits throw a descriptive error.
+   */
   interpolatePath(path: string): number[] {
     this.validateNumericOptions();
     return this.interpolatePathWithBudget(path, this.createSamplingBudget());
