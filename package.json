@@ -9,24 +9,24 @@
     "url": "https://github.com/justinwilaby/svg-path-interpolator.git"
   },
   "bin": {
-    "svgpi": "./bin/svgpi.mjs"
+    "svgpi": "./lib/cli.js"
   },
   "engines": {
-    "node": ">=14.x"
+    "node": ">=22"
   },
   "type": "module",
   "exports": {
     ".": {
-      "module": "./lib/index.js",
+      "types": "./lib/index.d.ts",
       "import": "./lib/index.js",
       "default": "./lib/index.js"
     },
     "./*": "./lib/*"
   },
+  "types": "./lib/index.d.ts",
   "main": "./lib/index.js",
   "browser": "./lib/index.js",
   "files": [
-    "bin",
     "config",
     "lib"
   ],
@@ -44,16 +44,18 @@
     "polygon"
   ],
   "scripts": {
-    "build": "node import-path-plugin.mjs && node copy-deps.mjs",
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
     "pretest": "npm run build",
     "test": "node --test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify:package": "node scripts/verify-package.mjs"
   },
   "dependencies": {
-    "sax-wasm": "2.2.0"
+    "sax-wasm": "3.1.4"
   },
   "devDependencies": {
-    "glob": "^8.0.3",
-    "typescript": "^4.7.2"
+    "@types/node": "22.20.5",
+    "typescript": "7.0.2"
   }
 }

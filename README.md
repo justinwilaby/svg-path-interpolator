@@ -1,21 +1,23 @@
 # SVG Path Interpolator
-The SVG Path Interpolator produces point data representing interpolated values within an SVG path.  This is handy when you need to calculate complex paths for animation or drawing APIs beforehand.  Complex paths that include Bézier curves are converted to polygons with a configurable segment sampling size producing more points with greater precision or fewer points for speed.  Polygon path data can be used to animate, draw or for hit detection in games.
 
-## Development
-Run `npm test` to build the library and run its tests with Node's built-in test runner. Run `npm run typecheck` to check the TypeScript source. The test suite is verified on Node 26.
+SVG Path Interpolator samples SVG paths into flat arrays of x/y coordinates for drawing, animation, and hit detection. Sampling distance and precision are configurable.
+
+## Requirements
+
+Node.js 24 or newer is required for the CLI and Node API. Browser use requires modern ES modules and WebAssembly support.
 
 ## Install
+
 ```bash
-npm install svg-path-interpolator --save
-```
-or as a cli
-```bash
-npm install -g svg-path-interpolator
+npm install svg-path-interpolator
 ```
 
-## Usage
-### CLI
-Create a config.json somewhere in your project. See the `sample.config.json` for configuration options.
+For the CLI, install globally with `npm install -g svg-path-interpolator` or run it through `npx`.
+
+## CLI
+
+Create a config file:
+
 ```json
 {
   "joinPathData": false,
@@ -26,84 +28,76 @@ Create a config.json somewhere in your project. See the `sample.config.json` for
   "prettyIndent": 0
 }
 ```
-Then from your terminal, type
+
+Then run:
+
 ```bash
-svgpi ./path/to/config.json ./path/to/target.svg ./output/fileName.json
+svgpi ./config.json ./drawing.svg ./points.json
 ```
-### In the browser as a direct script embed (no-build process)
-Copy all files in the `lib/` directory to `svg-interpolator/` on your web server then point a script tag to it. 
-```html
-<script src="../svg-interpolator/index.js"></script>
+
+Omit the output path to print the JSON to stdout. See [sample.config.json](config/sample.config.json) for the same settings.
+
+## Node API
+
+`sax-wasm` includes the WebAssembly binary. Load it from that package and pass the bytes to `createInterpolator`:
+
+```js
+import { readFile } from 'node:fs/promises';
+import { createInterpolator } from 'svg-path-interpolator';
+
+const wasmUrl = new URL(import.meta.resolve('sax-wasm/lib/sax-wasm.wasm'));
+const wasm = await readFile(wasmUrl);
+const interpolator = await createInterpolator({ joinPathData: true }, wasm);
+
+const svg = await readFile('./drawing.svg');
+const points = interpolator.processSVG(svg);
 ```
-The `SVGPathInterpolator` will be defined as a global and can be used anywhere
+
+`createInterpolator` also accepts a browser-accessible URL or a `Response` as its second argument. It requires that argument because the package does not copy the WASM binary into its own `lib` directory.
+
+## Browser API
+
+With a bundler, copy `node_modules/sax-wasm/lib/sax-wasm.wasm` to a public URL, then pass that URL to `createInterpolator`:
+
+```js
+import { createInterpolator } from 'svg-path-interpolator';
+
+const interpolator = await createInterpolator({ joinPathData: true }, '/assets/sax-wasm.wasm');
+const response = await fetch('/drawing.svg');
+const points = interpolator.processSVG(new Uint8Array(await response.arrayBuffer()));
+```
+
+For a browser without a bundler, serve this package's `lib/` directory and the `sax-wasm` package's `lib/` directory. An import map resolves the bare `sax-wasm` import:
+
 ```html
-<script type="module" defer>
-  const { createInterpolator } = SVGPathInterpolator;
-  const interpolator = await createInterpolator({
-    joinPathData: true,
-    minDistance: 0.5,
-    roundToNearest: 0.25,
-    sampleFrequency: 0.001,
-  }, '../svg-interpolator/sax-wasm.wasm');
-  
-  // ------ Get the SVG as a Uint8Array Via fetch ----------
-  const response = await fetch('./path-to-svg.svg');
-  if (!response.ok) {
-    return;
-  }
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  // -------------------------------------------------------
-  // --------------- OR from a DOM element -----------------
+<script type="importmap">
+  {"imports": {"sax-wasm": "/vendor/sax-wasm/lib/esm/index.js"}}
+</script>
+<script type="module">
+  import { createInterpolator } from '/vendor/svg-path-interpolator/lib/index.js';
+
+  const interpolator = await createInterpolator(
+    { joinPathData: true },
+    '/vendor/sax-wasm/lib/sax-wasm.wasm'
+  );
   const svg = document.querySelector('svg.my-svg');
-  const bytes = new TextEncoder().encode(svg.outerHTML);
-  //--------------------------------------------------------
-  const paths = interpolator.processSVG(bytes);
-  console.log('Created', paths.length, 'paths');
+  const points = interpolator.processSVG(new TextEncoder().encode(svg.outerHTML));
 </script>
 ```
-### In the browser as a dependency (bundler like webpack or rollup)
-```ts
-import { createInterpolator } from 'svg-path-interpolator';
-// ...
-const interpolator = await createInterpolator({
-    joinPathData: true,
-    minDistance: 0.5,
-    roundToNearest: 0.25,
-    sampleFrequency: 0.001,
-  }, '../svg-interpolator/sax-wasm.wasm');
-  
-  // ------ Get the SVG as a Uint8Array Via fetch ----------
-  const response = await fetch('./path-to-svg.svg');
-  if (!response.ok) {
-    return;
-  }
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  // -------------------------------------------------------
-  // --------------- OR from a DOM element -----------------
-  const svg = document.querySelector('svg.my-svg');
-  const bytes = new TextEncoder().encode(svg.outerHTML);
-  //--------------------------------------------------------
-  const paths = interpolator.processSVG(bytes);
-```
 
-### joinPathData
-When `joinPathData` is `true`, all path data is joined in a single array as the output. When `false`, each path is separated by the path `id` attribute in a json object as the output. If no `id` attribute exists on the path, a unique id is created.
+## Options
 
-### minDistance
-`minDistance` is the minimum distance between the current and previous points when sampling.  If a sample results in a distance less than the specified value, the point is discarded.
+- `joinPathData`: When true, return one flat array. Otherwise, return an object keyed by each path's `id` or a generated key.
+- `minDistance`: Discard samples closer than this distance to the previous accepted point. Default: `0.5`.
+- `roundToNearest`: Snap coordinates to this increment. Default: `0.25`.
+- `sampleFrequency`: Increment of the curve parameter `t` between samples. Default: `0.001`.
+- `trim`: Translate sampled coordinates so their minimum x and y values are zero. Default: `false`.
+- `pretty` and `prettyIndent`: CLI JSON formatting options.
 
-### roundToNearest
-`roundToNearest` is useful when snapping to fractional pixel values.  For example, if `roundToNearest` is `.25`, a sample resulting in the point 2.343200092,4.6100923 will round to 2.25,4.5
+## Development
 
-### sampleFrequency
- `sampleFrequency` determines the increment of `t` when sampling. If `sampleFrequency` is set to `.001` , since `t` iterates from 0 to 1, there will be 1000 points sampled per command but only points that are greater than `minDistance` are captured.
-
-### pretty (cli only)
-When `true`, `pretty` creates formatted json output
-
-### prettyIndent (cli only)
-Then number of spaces to indent when `pretty` is `true`
+All package source, including the CLI, lives in `src/` as TypeScript. Run `npm run build` to emit ESM and TypeScript declarations into the generated, Git-ignored `lib/` directory. `npm pack` and `npm publish` build it automatically through `prepack`. Run `npm test` to build and run the Node test suite, `npm run typecheck` to check the source without emitting files, and `npm run verify:package` to check the packed package from a fresh consumer project. GitHub Actions runs these checks on Node 22, 24, and 26 using Ubuntu hosted runners.
 
 ## Examples
-### Animating output
-See [this pen](https://codepen.io/justinwilaby/pen/dMQdBo) for an example on animating a simple path.
+
+See [examples/index.html](examples/index.html) for a browser example and [this animation](https://codepen.io/justinwilaby/pen/dMQdBo) for a use of the point data.

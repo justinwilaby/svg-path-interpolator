@@ -6,4 +6,4 @@
 /doc
 .DS_Store
 .idea/
-./lib
+/lib/

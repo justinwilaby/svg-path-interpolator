@@ -1,17 +1,19 @@
-import { SaxEventType, SAXParser, Tag } from 'sax-wasm';
+import { SaxEventType, SAXParser } from 'sax-wasm';
+import type { Tag } from 'sax-wasm';
 import { calculators } from './math/calculators.js';
 import { SVGTransform } from './math/SVGTransform.js';
 
 const commandRegEx = /([mlcqzavhst])\s*([-+\d.eE,\s]*)/ig;
 const argumentsRegEx = /[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/g;
 const transformRegEx = /(matrix|translate|scale|rotate|skewX|skewY)(?:\()(.*)(?:\))/;
-type CallableSvgTransform = {[P in keyof SVGTransform]: SVGTransform[P] extends CallableFunction ? P: never}[keyof SVGTransform]
+type TransformMethod = 'matrix' | 'translate' | 'scale' | 'rotate' | 'skewX' | 'skewY';
 export interface SVGInterpolatorConfig {
-  joinPathData: false,
-  minDistance: number,
-  roundToNearest: number,
-  sampleFrequency: number,
-  parser: SAXParser
+  joinPathData?: boolean,
+  minDistance?: number,
+  roundToNearest?: number,
+  sampleFrequency?: number,
+  trim?: boolean,
+  parser?: SAXParser
 }
 
 export class SVGPathInterpolator {
@@ -94,37 +96,31 @@ export class SVGPathInterpolator {
    * @memberOf SVGPathInterpolator#
    * @default null
    */
-  parser: SAXParser;
+  parser?: SAXParser;
 
-  constructor(config: SVGInterpolatorConfig = {
-    joinPathData: false,
-    minDistance: +0.5,
-    roundToNearest: +0.25,
-    sampleFrequency: +0.001,
-    parser: null
-  }) {
+  constructor(config: SVGInterpolatorConfig = {}) {
     Object.assign(this, config);
   }
 
-  parseArguments(source: string): (string | number)[] {
-    const args: (string | number)[] = [];
+  parseArguments(source: string): number[] {
+    const args: number[] = [];
     let arg;
     while (arg = argumentsRegEx.exec(source)) {
-      if (isFinite(+arg[0])) {
-        args.push(+arg[0]);
-      } else {
-        args.push(arg[0]);
-      }
+      args.push(+arg[0]);
     }
     return args;
   }
 
   processSVG(data: Uint8Array): number[] | Record<string, number[]> {
+    if (!this.parser) {
+      throw new Error('A prepared SAX parser is required to process SVG');
+    }
     const openTagsDepth: Record<string, number> = {};
     const transforms: Record<string, string> = {};
     let interpolatedPaths = this.joinPathData ? []:{};
     let i = Date.now();
-    this.parser.eventHandler = (event, node: Tag) => {
+    this.parser.eventHandler = (event, detail) => {
+      const node = detail as Tag;
       if (event===SaxEventType.OpenTag) {
         if (!openTagsDepth[node.name]) {
           openTagsDepth[node.name] = 0;
@@ -137,6 +133,9 @@ export class SVGPathInterpolator {
 
         if (node.name==='path') {
           const p = node.attributes.find(attr => attr.name.value==='d')
+          if (!p) {
+            return;
+          }
           const points = this.interpolatePath(p.value.value);
           this.applyTransforms(transforms, points);
           if (!this.joinPathData) {
@@ -169,9 +168,14 @@ export class SVGPathInterpolator {
     keys.forEach(depth => {
       const svgTransform = new SVGTransform();
       const rawTransform = transforms[depth];
-      const [, type, rawArguments] = transformRegEx.exec(rawTransform);
+      const transformMatch = transformRegEx.exec(rawTransform);
+      if (!transformMatch) {
+        return;
+      }
+      const [, type, rawArguments] = transformMatch;
       const args = this.parseArguments(rawArguments);
-      svgTransform[type as CallableSvgTransform].call(svgTransform, ...args);
+      const method = svgTransform[type as TransformMethod] as (...values: number[]) => unknown;
+      method.call(svgTransform, ...args);
 
       const len = points.length;
       for (let i = 0; i < len; i += 2) {
@@ -188,14 +192,14 @@ export class SVGPathInterpolator {
     let subPathStartY = 0;
     let offsetX = 0;
     let offsetY = 0;
-    let args;
     let match;
-    let lastCommand = { command: '', points: undefined, offsets: undefined };
+    let lastCommand: { command: string; points?: number[]; offsets?: { offsetX: number; offsetY: number } } = { command: '' };
     let lastQuadraticControlX = 0;
     let lastQuadraticControlY = 0;
     while (match = commandRegEx.exec(path)) {
       const [, command, rawArguments] = match;
-      let points = this.parseArguments(rawArguments) as number[];
+      let points = this.parseArguments(rawArguments);
+      let args: [number[]] | undefined;
 
       switch (command) {
         case 'A':
@@ -208,22 +212,20 @@ export class SVGPathInterpolator {
 
         case 'S':
         case 's':
-          let lastCtrlX;
-          let lastCtrlY;
+          let lastCtrlX = offsetX;
+          let lastCtrlY = offsetY;
           const { command: lastC, points: lastP } = lastCommand;
           const reg = command.toLowerCase()==='s' ? /^[cs]$/:/^[qt]$/;
-          if (reg.test(lastC.toLowerCase())) {
+          if (reg.test(lastC.toLowerCase()) && lastP) {
             const { length } = lastP;
             lastCtrlY = lastP[length - 3];
             lastCtrlX = lastP[length - 4];
           }
-          args = points;
-
           if (/^[st]$/.test(command)) {
-            this.applyOffset(offsetX, offsetY, args, 4);
+            this.applyOffset(offsetX, offsetY, points, 4);
           }
-          args.unshift(offsetX, offsetY, lastCtrlX, lastCtrlY);
-          args = [args];
+          points.unshift(offsetX, offsetY, lastCtrlX, lastCtrlY);
+          args = [points];
           break;
 
         case 'T':
@@ -309,11 +311,10 @@ export class SVGPathInterpolator {
           args = [points];
           break;
       }
-      const calculator = calculators[command.toLowerCase()];
+      const calculator = calculators[command.toLowerCase() as keyof typeof calculators];
       const offsets = { offsetX, offsetY };
-      if (calculator) {
-        args.push(this.minDistance, this.roundToNearest, this.sampleFrequency);
-        const pts = calculator(...args);
+      if (calculator && args) {
+        const pts = calculator(args[0], this.minDistance, this.roundToNearest, this.sampleFrequency);
         data.push(...pts);
         const len = ~~points.length;
 

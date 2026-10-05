@@ -43,16 +43,24 @@ test('trims both coordinate axes to zero', () => {
 test('parses SVG paths and applies an ancestor transform', async () => {
   const require = createRequire(import.meta.url);
   const wasm = await readFile(require.resolve('sax-wasm/lib/sax-wasm.wasm'));
-  const wasmUrl = `data:application/wasm;base64,${wasm.toString('base64')}`;
-  const interpolator = await createInterpolator({ ...settings, joinPathData: false }, wasmUrl);
+  const interpolator = await createInterpolator({ ...settings, joinPathData: false }, new Uint8Array(wasm));
   const svg = new TextEncoder().encode('<svg><g transform="translate(10 20)"><path id="line" d="M0 0 L10 0"/></g></svg>');
   assert.deepEqual(interpolator.processSVG(svg), { line: [15, 20, 20, 20] });
 });
 
+test('loads the SAX WASM from a browser-style URL', async () => {
+  const require = createRequire(import.meta.url);
+  const wasm = await readFile(require.resolve('sax-wasm/lib/sax-wasm.wasm'));
+  const wasmUrl = `data:application/wasm;base64,${wasm.toString('base64')}`;
+  const interpolator = await createInterpolator({ ...settings }, wasmUrl);
+  const svg = new TextEncoder().encode('<svg><path id="line" d="M0 0 L10 0"/></svg>');
+  assert.deepEqual(interpolator.processSVG(svg), { line: [5, 0, 10, 0] });
+});
+
 test('CLI entry resolves to a packaged file and emits JSON', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
-  assert.equal(pkg.bin.svgpi, './bin/svgpi.mjs');
-  const result = spawnSync(process.execPath, [join(root, 'bin/svgpi.mjs'), join(root, 'config/sample.config.json'), join(root, 'examples/simpleCubic.svg')], { encoding: 'utf8' });
+  assert.equal(pkg.bin.svgpi, './lib/cli.js');
+  const result = spawnSync(process.execPath, [join(root, 'lib/cli.js'), join(root, 'config/sample.config.json'), join(root, 'examples/simpleCubic.svg')], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
   assert.ok(Array.isArray(JSON.parse(result.stdout)));
 });
