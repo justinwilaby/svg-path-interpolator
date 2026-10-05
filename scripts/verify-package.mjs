@@ -19,6 +19,7 @@ function run(command, args, cwd = root) {
   const result = spawnSync(command, args, {
     cwd,
     encoding: 'utf8',
+    shell: process.platform === 'win32',
     env: { ...process.env, npm_config_cache: join(temporaryDirectory, 'npm-cache') },
   });
   if (result.error) {
