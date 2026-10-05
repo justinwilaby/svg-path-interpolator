@@ -52,6 +52,44 @@ test('accepts every SVG path command, repeated groups, and supported arc variant
   ));
 });
 
+test('handles SVG arc edge cases and every sweep/large-arc combination', () => {
+  assert.deepEqual(interpolate('M0 0 A0 10 0 0 1 10 0'), [5, 0, 10, 0]);
+  assert.deepEqual(interpolate('M0 0 A-10 -10 0 0 1 20 0'), interpolate('M0 0 A10 10 0 0 1 20 0'));
+  assert.deepEqual(interpolate('M5 5 A10 10 0 1 1 5 5'), []);
+
+  for (const largeArc of [0, 1]) {
+    for (const sweep of [0, 1]) {
+      const result = interpolate(`M0 0 A15 10 30 ${largeArc} ${sweep} 20 0`, { roundToNearest: 0.000001 });
+      assert.ok(result.length >= 4);
+      assert.ok(Math.abs(result.at(-2) - 20) < 0.00001);
+      assert.ok(Math.abs(result.at(-1)) < 0.00001);
+      assert.ok(result.every(Number.isFinite));
+    }
+  }
+});
+
+test('samples arcs with finite extreme radii without losing their endpoints', () => {
+  for (const radius of ['1e308', '1e-308']) {
+    const result = interpolate(`M0 0 A${radius} ${radius} 0 0 1 10 0`, {
+      roundToNearest: 0.000001
+    });
+    assert.ok(result.length >= 2);
+    assert.ok(result.every(Number.isFinite));
+    assert.ok(Math.abs(result.at(-2) - 10) < 0.00001);
+    assert.ok(Math.abs(result.at(-1)) < 0.00001);
+  }
+});
+
+test('samples arcs between large finite coordinates without midpoint overflow', () => {
+  const result = interpolate('M-1e308 0 A1e308 1e308 0 0 1 1e308 0', {
+    roundToNearest: 0.000001
+  });
+  assert.ok(result.length >= 2);
+  assert.ok(result.every(Number.isFinite));
+  assert.equal(result.at(-2), 1e308);
+  assert.equal(result.at(-1), 0);
+});
+
 test('rejects malformed, unsupported, and incomplete SVG path data', () => {
   const invalidPaths = [
     'L10 0',
@@ -263,6 +301,15 @@ test('shares sample budgets across SVG paths and decomposed arcs', async () => {
   await assert.rejects(
     processSVG('<svg><path d="M0 0 A10 10 0 1 1 20 0"/></svg>', { maxSamples: 3 }),
     { name: 'RangeError', message: /maxSamples of 3 would be exceeded/ }
+  );
+});
+
+test('counts samples across every cubic created for a large arc', () => {
+  const arc = 'M0 0 A10 10 0 1 1 20 0';
+  assert.doesNotThrow(() => interpolate(arc, { maxSamples: 6 }));
+  assert.throws(
+    () => interpolate(arc, { maxSamples: 5 }),
+    { name: 'RangeError', message: /maxSamples of 5 would be exceeded/ }
   );
 });
 

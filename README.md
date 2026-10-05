@@ -112,6 +112,8 @@ Install dependencies with `npm ci`. All package source, including the CLI, lives
 
 GitHub Actions retains runtime coverage on Node 22, 24, and 26, runs quality and package verification once on Ubuntu, and adds Windows plus real-browser smoke coverage.
 
+See [CHANGELOG.md](CHANGELOG.md) for release notes and [RELEASING.md](RELEASING.md) for the manual release checklist.
+
 The package is ESM-only. Prefer imports from the package root; the existing subpath export remains available for compatibility. The SAX parser's WebAssembly binary remains supplied by `sax-wasm` and must be passed to `createInterpolator`, as shown above.
 
 ## Examples
