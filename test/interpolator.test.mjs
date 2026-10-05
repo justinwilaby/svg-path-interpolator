@@ -59,8 +59,8 @@ test('loads the SAX WASM from a browser-style URL', async () => {
 
 test('CLI entry resolves to a packaged file and emits JSON', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
-  assert.equal(pkg.bin.svgpi, './bin/svgpi.mjs');
-  const result = spawnSync(process.execPath, [join(root, 'bin/svgpi.mjs'), join(root, 'config/sample.config.json'), join(root, 'examples/simpleCubic.svg')], { encoding: 'utf8' });
+  assert.equal(pkg.bin.svgpi, './lib/cli.js');
+  const result = spawnSync(process.execPath, [join(root, 'lib/cli.js'), join(root, 'config/sample.config.json'), join(root, 'examples/simpleCubic.svg')], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
   assert.ok(Array.isArray(JSON.parse(result.stdout)));
 });

@@ -9,7 +9,7 @@
     "url": "https://github.com/justinwilaby/svg-path-interpolator.git"
   },
   "bin": {
-    "svgpi": "./bin/svgpi.mjs"
+    "svgpi": "./lib/cli.js"
   },
   "engines": {
     "node": ">=24"
@@ -27,7 +27,6 @@
   "main": "./lib/index.js",
   "browser": "./lib/index.js",
   "files": [
-    "bin",
     "config",
     "lib"
   ],
@@ -46,6 +45,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
     "pretest": "npm run build",
     "test": "node --test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -55,6 +55,7 @@
     "sax-wasm": "3.1.4"
   },
   "devDependencies": {
+    "@types/node": "24.19.1",
     "typescript": "7.0.2"
   }
 }

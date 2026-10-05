@@ -23,11 +23,12 @@ function run(command, args, cwd = root) {
 
 try {
   const [packageInfo] = JSON.parse(run('npm', [
-    'pack', '--json', '--ignore-scripts', '--pack-destination', temporaryDirectory,
+    'pack', '--json', '--pack-destination', temporaryDirectory,
   ]));
   const packagedFiles = new Set(packageInfo.files.map(({ path }) => path));
   for (const path of [
-    'bin/svgpi.mjs',
+    'lib/cli.js',
+    'lib/cli.d.ts',
     'lib/index.js',
     'lib/index.d.ts',
     'lib/SVGPathInterpolator.js',
@@ -39,6 +40,7 @@ try {
     ![...packagedFiles].some((path) => path.startsWith('lib/sax-wasm/')),
     'Package still contains a copied sax-wasm dependency',
   );
+  assert.ok(!packagedFiles.has('bin/svgpi.mjs'), 'Package contains the old JavaScript CLI');
 
   const consumer = join(temporaryDirectory, 'consumer');
   await mkdir(consumer);
@@ -64,8 +66,8 @@ try {
   const configFile = join(consumer, 'config.json');
   await writeFile(svgFile, svg);
   await writeFile(configFile, JSON.stringify(options));
-  const cliOutput = run(process.execPath, [
-    join(packageRoot, 'bin', 'svgpi.mjs'), configFile, svgFile,
+  const cliOutput = run(join(consumer, 'node_modules', '.bin', 'svgpi'), [
+    configFile, svgFile,
   ], consumer);
   assert.deepEqual(JSON.parse(cliOutput), { line: [5, 0, 10, 0] });
 
