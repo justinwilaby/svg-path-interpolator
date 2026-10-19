@@ -60,12 +60,12 @@
     "test:browser": "node scripts/browser-smoke.mjs"
   },
   "dependencies": {
-    "sax-wasm": "3.1.4"
+    "sax-wasm": "3.2.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
     "@playwright/test": "^1.63.0",
-    "@types/node": "26.6.4",
+    "@types/node": "26.6.5",
     "typescript": "7.0.2"
   }
 }
